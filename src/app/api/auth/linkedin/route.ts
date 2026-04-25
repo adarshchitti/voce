@@ -13,7 +13,12 @@ export async function GET() {
       maxAge: 60 * 10,
     });
     return Response.redirect(buildLinkedInAuthorizeUrl(state));
-  } catch {
-    return Response.json({ error: "Failed to start LinkedIn OAuth" }, { status: 400 });
+  } catch (error) {
+    // Temporary: log the real error
+    console.error("LinkedIn OAuth error:", error)
+    return Response.json({ 
+      error: "Failed to start LinkedIn OAuth",
+      detail: error instanceof Error ? error.message : String(error)
+    }, { status: 400 })
   }
 }
