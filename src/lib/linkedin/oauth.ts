@@ -7,21 +7,14 @@ export function getLinkedinConfig() {
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error("Missing LinkedIn OAuth env vars");
   }
-  console.log("LinkedIn env check:", {
-    hasClientId: !!clientId,
-    hasClientSecret: !!clientSecret,
-    hasRedirectUri: !!redirectUri,
-    clientIdLength: clientId?.length ?? 0,
-    redirectUriLength: redirectUri?.length ?? 0,
-  })
+  const missing = [
+    !clientId && "LINKEDIN_CLIENT_ID",
+    !clientSecret && "LINKEDIN_CLIENT_SECRET",
+    !redirectUri && "LINKEDIN_REDIRECT_URI",
+  ].filter(Boolean)
 
-  if (!clientId || !clientSecret || !redirectUri) {
-    const missing = [
-      !clientId && "LINKEDIN_CLIENT_ID",
-      !clientSecret && "LINKEDIN_CLIENT_SECRET", 
-      !redirectUri && "LINKEDIN_REDIRECT_URI",
-    ].filter(Boolean)
-    throw new Error(`Missing LinkedIn OAuth env vars: ${missing.join(", ")}`)
+  if (missing.length > 0) {
+    throw new Error(`Missing: ${missing.join(", ")}`)
   }
 
   return { clientId, clientSecret, redirectUri };
