@@ -41,6 +41,7 @@ export const draftQueue = pgTable("draft_queue", {
   draftText: text("draft_text").notNull(),
   hook: text("hook").notNull(),
   format: text("format").notNull().default("text_post"),
+  hashtags: text("hashtags").array().default(sql`'{}'`),
   sourceUrls: text("source_urls").array().default(sql`'{}'`),
   voiceScore: integer("voice_score"),
   aiTellFlags: text("ai_tell_flags"),
@@ -72,6 +73,10 @@ export const posts = pgTable("posts", {
   contentSnapshot: text("content_snapshot").notNull(),
   status: text("status").notNull().default("scheduled"),
   failureReason: text("failure_reason"),
+  manualImpressions: integer("manual_impressions"),
+  manualReactions: integer("manual_reactions"),
+  manualComments: integer("manual_comments"),
+  manualNotesUpdatedAt: timestamp("manual_notes_updated_at", { withTimezone: true }),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -102,6 +107,8 @@ export const voiceProfiles = pgTable("voice_profiles", {
   // User adds words/phrases they never want in their posts
   userNotes: text("user_notes"),
   // Freetext override: "I never use bullet lists. I always end on a question."
+  personalContext: text("personal_context"),
+  // User-written background used for "Add personal angle" draft personalization
 
   // Raw backup of last LLM extraction — kept for debugging, not used in prompts
   extractedPatterns: json("extracted_patterns"),
@@ -132,4 +139,14 @@ export const userSettings = pgTable("user_settings", {
   timezone: text("timezone").notNull().default("UTC"),
   jitterMinutes: integer("jitter_minutes").notNull().default(15),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const cronRuns = pgTable("cron_runs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  phase: text("phase").notNull(),
+  ranAt: timestamp("ran_at", { withTimezone: true }).notNull().defaultNow(),
+  durationMs: integer("duration_ms"),
+  result: json("result"),
+  errorCount: integer("error_count").notNull().default(0),
+  success: boolean("success").notNull().default(true),
 });

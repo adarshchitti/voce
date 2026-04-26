@@ -9,7 +9,110 @@ type Post = {
   scheduledAt: string;
   publishedAt: string | null;
   failureReason: string | null;
+  manualImpressions: number | null;
+  manualReactions: number | null;
+  manualComments: number | null;
 };
+
+function PostMetricsInput({ post }: { post: Post }) {
+  const [impressions, setImpressions] = useState<string | number>(post.manualImpressions ?? "");
+  const [reactions, setReactions] = useState<string | number>(post.manualReactions ?? "");
+  const [comments, setComments] = useState<string | number>(post.manualComments ?? "");
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/posts/${post.id}/metrics`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manualImpressions: impressions !== "" ? Number(impressions) : undefined,
+          manualReactions: reactions !== "" ? Number(reactions) : undefined,
+          manualComments: comments !== "" ? Number(comments) : undefined,
+        }),
+      });
+    } finally {
+      setSaving(false);
+      setOpen(false);
+    }
+  };
+
+  const hasMetrics = Boolean(post.manualImpressions || post.manualReactions || post.manualComments);
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      {hasMetrics && !open ? (
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          {post.manualImpressions ? <span>👁 {post.manualImpressions.toLocaleString()} impressions</span> : null}
+          {post.manualReactions ? <span>👍 {post.manualReactions} reactions</span> : null}
+          {post.manualComments ? <span>💬 {post.manualComments} comments</span> : null}
+          <button onClick={() => setOpen(true)} className="ml-auto text-blue-500 hover:text-blue-700">
+            Edit
+          </button>
+        </div>
+      ) : null}
+
+      {!hasMetrics && !open ? (
+        <button onClick={() => setOpen(true)} className="text-xs text-slate-400 transition-colors hover:text-slate-600">
+          + Add performance data
+          <span className="ml-1 text-slate-300">(manual from LinkedIn)</span>
+        </button>
+      ) : null}
+
+      {open ? (
+        <div className="space-y-2">
+          <p className="mb-2 text-xs text-slate-400">Enter from LinkedIn analytics - not required</p>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-slate-500">Impressions</label>
+              <input
+                type="number"
+                value={impressions}
+                onChange={(e) => setImpressions(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-slate-500">Reactions</label>
+              <input
+                type="number"
+                value={reactions}
+                onChange={(e) => setReactions(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-slate-500">Comments</label>
+              <input
+                type="number"
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                placeholder="0"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700">
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function HistoryPage() {
   const [posts, setPosts] = useState<Post[]>([]);
@@ -38,6 +141,7 @@ export default function HistoryPage() {
                   <p className="text-xs text-slate-400">{new Date(post.publishedAt ?? post.scheduledAt).toLocaleString()}</p>
                 </div>
               </div>
+              <PostMetricsInput post={post} />
             </div>
           ))}
           {published.length === 0 ? <p className="text-sm text-slate-500">No published posts yet.</p> : null}

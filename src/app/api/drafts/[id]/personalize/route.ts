@@ -37,17 +37,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         : null,
     ]);
 
-    const personalInstruction = `
-Add a genuine personal angle to this post. The author is:
-- A junior CS student at Virginia Tech doing agentic AI research
-- Interning at Klaviyo this summer (marketing automation / data infrastructure)
-- Currently building and researching coding agents
+    const personalContext = voiceProfile?.personalContext;
+    if (!personalContext) {
+      return Response.json(
+        {
+          error: "No personal context set. Add your background in Settings -> Voice Profile.",
+        },
+        { status: 400 },
+      );
+    }
 
-Connect the topic naturally to one of these experiences where it honestly fits.
-Do not force it if the connection is not genuine. If the topic relates to
-agent design, system tradeoffs, or production vs research — those are
-natural connection points. Keep the post the same length. Do not add
-"as someone who..." or similar awkward transitions.
+    const personalInstruction = `
+Add a genuine personal angle to this post using the author's background below.
+
+AUTHOR BACKGROUND:
+${personalContext}
+
+Rules:
+- Only connect to experiences that genuinely relate to the topic
+- Do not force a connection if one does not exist naturally
+- Do not use "as someone who..." or similar awkward transitions
+- Keep the post the same approximate length
+- The personal element should feel earned, not tacked on
 `.trim();
 
     const result = await generateDraft({

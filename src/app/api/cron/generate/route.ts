@@ -7,6 +7,7 @@ import {
   rejectionReasons,
   researchItems,
   topicSubscriptions,
+  cronRuns,
   userSettings,
   voiceProfiles,
 } from "@/lib/db/schema";
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
     if (authHeader !== `Bearer ${getCronSecret()}`) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const startTime = Date.now();
 
     await db
       .update(draftQueue)
@@ -45,7 +47,25 @@ export async function POST(request: Request) {
           continue;
         }
         await db.update(posts).set({ status: "publishing" }).where(eq(posts.id, post.id));
-        const result = await publishToLinkedIn(token.accessToken, token.personUrn, post.contentSnapshot);
+        const draft = await db.query.draftQueue.findFirst({
+          where: eq(draftQueue.id, post.draftId),
+        });
+        const articleUrl = draft?.sourceUrls?.[0] ?? null;
+        let result = await publishToLinkedIn({
+          accessToken: token.accessToken,
+          personUrn: token.personUrn,
+          text: post.contentSnapshot,
+          articleUrl,
+        });
+        if (!result.success && articleUrl && result.error.toLowerCase().includes("article")) {
+          console.warn(`Article attachment failed, retrying without: ${result.error}`);
+          result = await publishToLinkedIn({
+            accessToken: token.accessToken,
+            personUrn: token.personUrn,
+            text: post.contentSnapshot,
+            articleUrl: null,
+          });
+        }
         if (result.success) {
           await db.update(posts).set({ status: "published", linkedinPostId: result.postId, publishedAt: new Date() }).where(eq(posts.id, post.id));
           await db.update(draftQueue).set({ status: "published" }).where(eq(draftQueue.id, post.draftId));
@@ -124,6 +144,7 @@ export async function POST(request: Request) {
             draftText: generated.draftText,
             hook: generated.hook,
             format: generated.format,
+            hashtags: generated.hashtags ?? [],
             sourceUrls: [item.url],
             voiceScore,
             aiTellFlags: scanResult.clean
@@ -142,7 +163,20 @@ export async function POST(request: Request) {
       }
     }
 
-    return Response.json({ usersProcessed, draftsGenerated, postsPublished, postsFailed, errors });
+    const result = { usersProcessed, draftsGenerated, postsPublished, postsFailed, errors };
+    await db
+      .insert(cronRuns)
+      .values({
+        phase: "generate",
+        durationMs: Date.now() - startTime,
+        result,
+        errorCount: errors,
+        success: draftsGenerated > 0 || postsPublished > 0,
+      })
+      .catch((err) => {
+        console.error("Failed to log cron run:", err);
+      });
+    return Response.json(result);
   } catch {
     return Response.json({ error: "Generate cron failed" }, { status: 400 });
   }

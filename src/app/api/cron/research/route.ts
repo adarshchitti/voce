@@ -1,6 +1,6 @@
 import { and, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { researchItems, topicSubscriptions } from "@/lib/db/schema";
+import { cronRuns, researchItems, topicSubscriptions } from "@/lib/db/schema";
 import { fetchTavilyItems } from "@/lib/research/tavily";
 import { fetchRssItems } from "@/lib/research/rss";
 import { scoreResearchItem } from "@/lib/ai/score-research";
@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     if (authHeader !== `Bearer ${getCronSecret()}`) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const startTime = Date.now();
     const activeSubs = await db.select().from(topicSubscriptions).where(eq(topicSubscriptions.active, true));
     const uniqueQueries = [...new Set(activeSubs.map((s) => s.tavilyQuery))];
     const rssUrls = [...new Set(activeSubs.flatMap((s) => s.sourceUrls ?? []))];
@@ -69,7 +70,20 @@ export async function POST(request: Request) {
       }
     }
 
-    return Response.json({ fetched: rawItems.length, deduplicated, inserted, errors });
+    const result = { fetched: rawItems.length, deduplicated, inserted, errors };
+    await db
+      .insert(cronRuns)
+      .values({
+        phase: "research",
+        durationMs: Date.now() - startTime,
+        result,
+        errorCount: errors,
+        success: errors === 0 || inserted > 0,
+      })
+      .catch((err) => {
+        console.error("Failed to log cron run:", err);
+      });
+    return Response.json(result);
   } catch {
     return Response.json({ error: "Research cron failed" }, { status: 400 });
   }

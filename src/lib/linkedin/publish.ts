@@ -1,29 +1,47 @@
-export async function publishToLinkedIn(
-  accessToken: string,
-  personUrn: string,
-  text: string,
-): Promise<{ success: true; postId: string } | { success: false; error: string }> {
-  const response = await fetch("https://api.linkedin.com/rest/posts", {
+const LINKEDIN_API_BASE = "https://api.linkedin.com";
+const LINKEDIN_API_VERSION = "202501";
+
+export async function publishToLinkedIn({
+  accessToken,
+  personUrn,
+  text,
+  articleUrl,
+}: {
+  accessToken: string;
+  personUrn: string;
+  text: string;
+  articleUrl?: string | null;
+}): Promise<{ success: true; postId: string } | { success: false; error: string }> {
+  const postBody: Record<string, unknown> = {
+    author: personUrn,
+    commentary: text,
+    visibility: "PUBLIC",
+    distribution: {
+      feedDistribution: "MAIN_FEED",
+      targetEntities: [],
+      thirdPartyDistributionChannels: [],
+    },
+    lifecycleState: "PUBLISHED",
+    isReshareDisabledByAuthor: false,
+  };
+
+  if (articleUrl) {
+    postBody.content = {
+      article: {
+        source: articleUrl,
+      },
+    };
+  }
+
+  const response = await fetch(`${LINKEDIN_API_BASE}/rest/posts`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "LinkedIn-Version": "202501",
+      "LinkedIn-Version": LINKEDIN_API_VERSION,
       "X-Restli-Protocol-Version": "2.0.0",
     },
-    body: JSON.stringify({
-      author: personUrn,
-      lifecycleState: "PUBLISHED",
-      specificContent: {
-        "com.linkedin.ugc.ShareContent": {
-          shareCommentary: { text },
-          shareMediaCategory: "NONE",
-        },
-      },
-      visibility: {
-        "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-      },
-    }),
+    body: JSON.stringify(postBody),
   });
 
   if (response.status === 401) {

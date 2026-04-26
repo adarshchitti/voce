@@ -1,0 +1,1 @@
+ALTER TABLE "draft_queue" ADD COLUMN "hashtags" text[] DEFAULT '{}';

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { userSettings } from "@/lib/db/schema";
+import { linkedinTokens, userSettings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth";
 
 const defaults = {
@@ -20,7 +20,9 @@ export async function GET() {
       const [created] = await db.insert(userSettings).values({ userId, ...defaults }).returning();
       settings = created;
     }
-    return Response.json({ settings });
+    const tokenRows = await db.select().from(linkedinTokens).where(eq(linkedinTokens.userId, userId)).limit(1);
+    const linkedinToken = tokenRows[0] ?? null;
+    return Response.json({ settings, linkedinToken });
   } catch {
     return Response.json({ error: "Failed to fetch settings" }, { status: 400 });
   }

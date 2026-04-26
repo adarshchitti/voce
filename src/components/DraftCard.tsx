@@ -10,6 +10,7 @@ export type DraftView = {
   draftText: string;
   hook: string;
   format: string;
+  hashtags?: string[];
   voiceScore: number | null;
   sourceUrls: string[];
   status: string;
@@ -262,6 +263,15 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
           )}
 
           <CharacterBar count={charCount} limit={3000} />
+          {currentDraft.hashtags && currentDraft.hashtags.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {currentDraft.hashtags.map((tag) => (
+                <span key={tag} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="flex gap-2 pt-1">
             <input

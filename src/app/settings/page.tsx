@@ -39,6 +39,7 @@ function SettingsSection({
 
 export default function SettingsPage() {
   const [rawDescription, setRawDescription] = useState("");
+  const [personalContext, setPersonalContext] = useState("");
   const [samplePostsText, setSamplePostsText] = useState("");
   const [sentenceLength, setSentenceLength] = useState<string | null>(null);
   const [hookStyle, setHookStyle] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function SettingsPage() {
       setFormattingStyle(d.voiceProfile?.formattingStyle ?? null);
       setUserBannedWordsText((d.voiceProfile?.userBannedWords ?? []).join(", "));
       setUserNotes(d.voiceProfile?.userNotes ?? "");
+      setPersonalContext(d.voiceProfile?.personalContext ?? "");
     });
 
     fetch("/api/topics")
@@ -96,7 +98,7 @@ export default function SettingsPage() {
     const response = await fetch("/api/voice", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawDescription, samplePosts }),
+      body: JSON.stringify({ rawDescription, samplePosts, personalContext }),
     });
     showToast(response.ok ? "Voice profile saved" : "Failed to save", response.ok ? "success" : "error");
   }
@@ -232,7 +234,7 @@ export default function SettingsPage() {
           </div>
         ) : null}
 
-        {linkedinToken && linkedinToken.status === "expired" ? (
+        {linkedinToken && linkedinToken.status !== "active" ? (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
@@ -295,6 +297,21 @@ export default function SettingsPage() {
               className="h-40 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={samplePostsText}
               onChange={(e) => setSamplePostsText(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Personal context
+              <span className="ml-1 text-xs font-normal text-slate-400">
+                - used when "Add personal angle" is triggered on a draft
+              </span>
+            </label>
+            <textarea
+              value={personalContext}
+              onChange={(e) => setPersonalContext(e.target.value)}
+              placeholder="Describe your background, current projects, and experiences that are relevant to your posts. E.g. 'Junior CS student doing agentic AI research, interning at Klaviyo...'"
+              rows={4}
+              className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <button onClick={saveVoice} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-green-700">

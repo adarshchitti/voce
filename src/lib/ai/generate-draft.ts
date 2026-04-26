@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AI_TELL_BLOCKLIST_PROMPT } from "@/lib/ai/ai-tells";
 
+const MAX_POST_CHARS = 3000;
+
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
@@ -75,13 +77,27 @@ Article title: ${input.title}
 Article summary: ${input.summary}
 Article URL: ${input.url}
 
-Return JSON with exactly this shape:
+DO NOT include the source URL in the post text. The article will be
+attached as a link preview automatically when published. Write the
+post body only - no URLs, no "Source:" lines at the end.
+
+Return JSON with exactly this shape, no other text:
 {
-  "hook": "The opening line only",
-  "draftText": "The complete post text including hook, body, and CTA",
-  "format": "text_post",
-  "hashtags": ["tag1", "tag2"]
+  "hook": "The opening line only, under 20 words",
+  "draftText": "The complete post text. Do NOT include hashtags in this field.",
+  "hashtags": ["tag1", "tag2"],
+  "characterCount": <number of characters in draftText only, not including hashtags>
 }
+
+HASHTAG RULES:
+- Generate 2-3 hashtags ONLY if genuinely specific ones exist for this topic
+- If no specific hashtags fit naturally, return an empty array []
+- NEVER use generic tags: #AI #Tech #Innovation #LinkedIn #Growth #Success
+- Good examples: #AgenticAI #LLMEngineering #SystemDesign #SoftwareEngineering
+  #MachineLearning #ProductEngineering #ResearchToProduction
+- Bad examples: #AI #Tech #Coding #Learning #Career
+- Hashtags go at the end of the post - they are NOT part of draftText
+- Return hashtag strings without the # prefix (add it when assembling)
 
 The draftText must include the hook as its first line.
 Total draftText length must be under 3000 characters.`,
@@ -91,10 +107,24 @@ Total draftText length must be under 3000 characters.`,
 
   const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
   const clean = text.replace(/```json\n?|```\n?/g, "").trim();
-  return JSON.parse(clean) as {
+  const parsed = JSON.parse(clean) as {
     hook: string;
     draftText: string;
-    format: string;
     hashtags: string[];
+    characterCount: number;
+  };
+  const hashtags = (parsed.hashtags ?? []).filter((tag) => tag.length > 0).slice(0, 3);
+  const finalText =
+    hashtags.length > 0 ? `${parsed.draftText}\n\n${hashtags.map((tag) => `#${tag}`).join(" ")}` : parsed.draftText;
+
+  if (finalText.length > MAX_POST_CHARS) {
+    throw new Error(`Generated post too long: ${finalText.length} chars (limit ${MAX_POST_CHARS})`);
+  }
+
+  return {
+    hook: parsed.hook,
+    draftText: finalText,
+    format: "text_post",
+    hashtags,
   };
 }

@@ -17,7 +17,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const userId = await requireAuth();
-    const body = (await request.json()) as { rawDescription?: string; samplePosts?: string[] };
+    const body = (await request.json()) as { rawDescription?: string; samplePosts?: string[]; personalContext?: string };
     const samplePosts = body.samplePosts ?? [];
     const patterns = samplePosts.length >= 3 ? await extractVoicePatterns(samplePosts) : null;
 
@@ -27,6 +27,7 @@ export async function PUT(request: Request) {
         userId, // STAGE2: replace with supabase auth.uid()
         rawDescription: body.rawDescription ?? null,
         samplePosts,
+        personalContext: body.personalContext ?? null,
         sentenceLength: patterns?.sentenceLength ?? null,
         hookStyle: patterns?.hookStyle ?? null,
         pov: patterns?.pov ?? null,
@@ -41,6 +42,7 @@ export async function PUT(request: Request) {
         set: {
           rawDescription: body.rawDescription ?? null,
           samplePosts,
+          personalContext: body.personalContext ?? null,
           sentenceLength: patterns?.sentenceLength ?? null,
           hookStyle: patterns?.hookStyle ?? null,
           pov: patterns?.pov ?? null,
