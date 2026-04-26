@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useToast } from "./Toast";
 
 const reasons = [
   { code: "wrong_topic", label: "Wrong topic" },
@@ -20,46 +21,78 @@ export default function RejectionModal({
   onRejected: () => void;
 }) {
   const [freeText, setFreeText] = useState("");
-  const [loading, setLoading] = useState<string | null>(null);
+  const [reasonCode, setReasonCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
-  async function submit(reasonCode: string) {
-    setLoading(reasonCode);
+  async function submit() {
+    if (!reasonCode) return;
+    setLoading(true);
     const response = await fetch(`/api/drafts/${draftId}/reject`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reasonCode, freeText: reasonCode === "other" ? freeText : undefined }),
     });
-    setLoading(null);
-    if (!response.ok) return;
+    setLoading(false);
+    if (!response.ok) {
+      showToast("Failed to save", "error");
+      return;
+    }
+    showToast("Draft rejected", "success");
     onRejected();
     onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-4 shadow">
-        <h3 className="mb-3 text-lg font-semibold">Reject draft</h3>
-        <div className="space-y-2">
-          {reasons.map((reason) => (
-            <button
-              key={reason.code}
-              onClick={() => submit(reason.code)}
-              disabled={loading !== null || (reason.code === "other" && freeText.trim().length === 0)}
-              className="w-full rounded-md border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
-            >
-              {loading === reason.code ? "Saving..." : reason.label}
-            </button>
-          ))}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl">
+        <div className="border-b border-slate-100 p-5">
+          <h3 className="font-semibold text-slate-900">Why reject this draft?</h3>
+          <p className="mt-0.5 text-sm text-slate-500">Your feedback improves future drafts</p>
         </div>
-        <textarea
-          value={freeText}
-          onChange={(e) => setFreeText(e.target.value)}
-          placeholder="Reason details (required for Other)"
-          className="mt-3 h-20 w-full rounded-md border border-gray-300 p-2 text-sm"
-        />
-        <button onClick={onClose} disabled={loading !== null} className="mt-3 text-sm text-gray-500">
-          Cancel
-        </button>
+
+        <div className="space-y-2 p-5">
+          {reasons.map((option) => (
+            <label key={option.code} className="group flex cursor-pointer items-center gap-3">
+              <input
+                type="radio"
+                name="reason"
+                value={option.code}
+                checked={reasonCode === option.code}
+                onChange={() => setReasonCode(option.code)}
+                className="accent-blue-600"
+                disabled={loading}
+              />
+              <span className="text-sm text-slate-700 group-hover:text-slate-900">{option.label}</span>
+            </label>
+          ))}
+
+          <textarea
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            placeholder="Add detail (optional)"
+            rows={2}
+            className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={loading}
+          />
+        </div>
+
+        <div className="flex gap-2 p-5 pt-0">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={!reasonCode || loading}
+            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Saving..." : "Reject draft"}
+          </button>
+        </div>
       </div>
     </div>
   );

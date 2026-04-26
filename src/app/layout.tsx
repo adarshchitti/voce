@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Nav from "@/components/Nav";
 import TokenExpiryBanner from "@/components/TokenExpiryBanner";
+import { ToastProvider } from "@/components/Toast";
 import { db } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { linkedinTokens } from "@/lib/db/schema";
@@ -26,11 +27,13 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900">
-        {tokenExpired ? <TokenExpiryBanner /> : null}
-        <Nav />
-        <main className="mx-auto w-full max-w-5xl p-4 md:p-6">{children}</main>
+    <html lang="en" className="h-full">
+      <body className="h-full bg-slate-50 text-slate-900 antialiased">
+        <ToastProvider>
+          <Nav />
+          {tokenExpired ? <TokenExpiryBanner /> : null}
+          <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">{children}</main>
+        </ToastProvider>
       </body>
     </html>
   );
