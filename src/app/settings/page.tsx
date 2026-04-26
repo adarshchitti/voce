@@ -1,7 +1,21 @@
 "use client";
 
+import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
+
+interface LinkedInTokenView {
+  status: "active" | "expired" | string;
+  personUrn: string;
+  tokenExpiry: string;
+}
+
+interface TopicRow {
+  id?: string;
+  topicLabel: string;
+  tavilyQuery: string;
+  sourceUrls: string[];
+}
 
 function SettingsSection({
   title,
@@ -33,8 +47,8 @@ export default function SettingsPage() {
   const [formattingStyle, setFormattingStyle] = useState<string | null>(null);
   const [userBannedWordsText, setUserBannedWordsText] = useState("");
   const [userNotes, setUserNotes] = useState("");
-  const [topicLabel, setTopicLabel] = useState("");
-  const [tavilyQuery, setTavilyQuery] = useState("");
+  const [linkedinToken, setLinkedinToken] = useState<LinkedInTokenView | null>(null);
+  const [topics, setTopics] = useState<TopicRow[]>([]);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -49,6 +63,29 @@ export default function SettingsPage() {
       setUserBannedWordsText((d.voiceProfile?.userBannedWords ?? []).join(", "));
       setUserNotes(d.voiceProfile?.userNotes ?? "");
     });
+
+    fetch("/api/topics")
+      .then((r) => r.json())
+      .then((d) => {
+        const existingTopics = (d.topics ?? []) as TopicRow[];
+        setTopics(
+          existingTopics.length > 0
+            ? existingTopics.map((topic) => ({
+                id: topic.id,
+                topicLabel: topic.topicLabel ?? "",
+                tavilyQuery: topic.tavilyQuery ?? "",
+                sourceUrls: topic.sourceUrls ?? [],
+              }))
+            : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [] }],
+        );
+      });
+
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        setLinkedinToken((d.linkedinToken ?? null) as LinkedInTokenView | null);
+      })
+      .catch(() => setLinkedinToken(null));
   }, []);
 
   async function saveVoice() {
@@ -64,15 +101,57 @@ export default function SettingsPage() {
     showToast(response.ok ? "Voice profile saved" : "Failed to save", response.ok ? "success" : "error");
   }
 
-  async function addTopic() {
-    const response = await fetch("/api/topics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topicLabel, tavilyQuery }),
-    });
-    showToast(response.ok ? "Topics saved" : "Failed to save", response.ok ? "success" : "error");
-    setTopicLabel("");
-    setTavilyQuery("");
+  const updateTopic = (index: number, field: keyof TopicRow, value: string | string[]) => {
+    setTopics((prev) => prev.map((topic, i) => (i === index ? { ...topic, [field]: value } : topic)));
+  };
+
+  async function saveTopics() {
+    const validTopics = topics
+      .map((topic) => ({
+        ...topic,
+        topicLabel: topic.topicLabel.trim(),
+        tavilyQuery: topic.tavilyQuery.trim(),
+        sourceUrls: topic.sourceUrls.map((url) => url.trim()).filter(Boolean),
+      }))
+      .filter((topic) => topic.topicLabel && topic.tavilyQuery);
+
+    const existingTopicIds = topics.map((topic) => topic.id).filter(Boolean) as string[];
+
+    const deleteRequests = existingTopicIds.map((id) =>
+      fetch(`/api/topics?id=${encodeURIComponent(id)}`, { method: "DELETE" }),
+    );
+    const createRequests = validTopics.map((topic) =>
+      fetch("/api/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topicLabel: topic.topicLabel,
+          tavilyQuery: topic.tavilyQuery,
+          sourceUrls: topic.sourceUrls,
+        }),
+      }),
+    );
+
+    const responses = await Promise.all([...deleteRequests, ...createRequests]);
+    const allSucceeded = responses.every((response) => response.ok);
+
+    if (allSucceeded) {
+      showToast("Topics saved");
+      const refreshed = await fetch("/api/topics").then((r) => r.json());
+      const latestTopics = (refreshed.topics ?? []) as TopicRow[];
+      setTopics(
+        latestTopics.length > 0
+          ? latestTopics.map((topic) => ({
+              id: topic.id,
+              topicLabel: topic.topicLabel ?? "",
+              tavilyQuery: topic.tavilyQuery ?? "",
+              sourceUrls: topic.sourceUrls ?? [],
+            }))
+          : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [] }],
+      );
+      return;
+    }
+    showToast("Failed to save", "error");
   }
 
   async function saveOverrides() {
@@ -109,12 +188,72 @@ export default function SettingsPage() {
       </div>
 
       <SettingsSection title="LinkedIn" description="Connect your account to enable publishing">
-        <a
-          href="/api/auth/linkedin"
-          className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50"
-        >
-          Connect LinkedIn
-        </a>
+        {!linkedinToken ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-700">No account connected</p>
+              <p className="mt-0.5 text-xs text-slate-400">Required to publish posts</p>
+            </div>
+            <a
+              href="/api/auth/linkedin"
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              Connect LinkedIn
+            </a>
+          </div>
+        ) : null}
+
+        {linkedinToken && linkedinToken.status === "active" ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600">
+                <span className="text-sm font-bold text-white">in</span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-900">LinkedIn connected</p>
+                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Expires {formatDistanceToNow(new Date(linkedinToken.tokenExpiry), { addSuffix: true })}
+                  {" · "}
+                  <span className="font-mono text-slate-300">
+                    {linkedinToken.personUrn.replace("urn:li:person:", "").slice(0, 8)}...
+                  </span>
+                </p>
+              </div>
+            </div>
+            <a
+              href="/api/auth/linkedin"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Reconnect
+            </a>
+          </div>
+        ) : null}
+
+        {linkedinToken && linkedinToken.status === "expired" ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
+                <span className="text-sm font-bold text-red-600">in</span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-900">LinkedIn disconnected</p>
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Expired</span>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500">Posts will not publish until reconnected</p>
+              </div>
+            </div>
+            <a
+              href="/api/auth/linkedin"
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            >
+              Reconnect
+            </a>
+          </div>
+        ) : null}
       </SettingsSection>
 
       <SettingsSection title="Voice Profile" description="Help the AI write in your style">
@@ -191,36 +330,86 @@ export default function SettingsPage() {
 
       <SettingsSection title="Topics & Sources" description="What you want to post about — used to find relevant articles daily">
         <div className="space-y-3">
-          <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-slate-500">
-            <div className="col-span-4">Topic name</div>
-            <div className="col-span-5">Search query (Tavily)</div>
-            <div className="col-span-3">RSS feed URLs</div>
-          </div>
-          <div className="grid grid-cols-12 gap-2">
-            <input
-              value={topicLabel}
-              onChange={(e) => setTopicLabel(e.target.value)}
-              placeholder="Topic label"
-              className="col-span-12 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-4"
-            />
-            <input
-              value={tavilyQuery}
-              onChange={(e) => setTavilyQuery(e.target.value)}
-              placeholder="Tavily query"
-              className="col-span-12 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-5"
-            />
-            <input
-              value=""
-              readOnly
-              placeholder="(Optional in API)"
-              className="col-span-12 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 sm:col-span-3"
-            />
-          </div>
+          {topics.map((topic, i) => (
+            <div key={topic.id ?? i} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500">Topic {i + 1}</span>
+                {topics.length > 1 ? (
+                  <button
+                    onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Topic name</label>
+                  <input
+                    type="text"
+                    value={topic.topicLabel}
+                    onChange={(e) => updateTopic(i, "topicLabel", e.target.value)}
+                    placeholder="e.g. Agentic AI"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Search query
+                    <span className="ml-1 font-normal text-slate-400">— what to search for on the web</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={topic.tavilyQuery}
+                    onChange={(e) => updateTopic(i, "tavilyQuery", e.target.value)}
+                    placeholder="e.g. agentic AI systems 2025"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    RSS feeds
+                    <span className="ml-1 font-normal text-slate-400">— optional, one URL per line</span>
+                  </label>
+                  <textarea
+                    value={topic.sourceUrls.join("\n")}
+                    onChange={(e) =>
+                      updateTopic(
+                        i,
+                        "sourceUrls",
+                        e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    placeholder="https://example.com/feed"
+                    rows={2}
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {topics.length < 5 ? (
+            <button
+              onClick={() => setTopics((prev) => [...prev, { topicLabel: "", tavilyQuery: "", sourceUrls: [] }])}
+              className="w-full rounded-xl border border-dashed border-slate-300 py-2 text-sm text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700"
+            >
+              + Add topic
+            </button>
+          ) : null}
+
           <button
-            onClick={addTopic}
+            onClick={saveTopics}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50"
           >
-            Add topic
+            Save topics
           </button>
         </div>
       </SettingsSection>

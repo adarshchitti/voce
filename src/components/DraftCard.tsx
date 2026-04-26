@@ -110,12 +110,14 @@ function CharacterBar({ count, limit }: { count: number; limit: number }) {
 }
 
 export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRemoved: () => void }) {
+  const [currentDraft, setCurrentDraft] = useState(draft);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedText, setEditedText] = useState(draft.editedText ?? draft.draftText);
+  const [editedText, setEditedText] = useState(currentDraft.editedText ?? currentDraft.draftText);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [regenInstruction, setRegenInstruction] = useState("");
   const [isApproving, setIsApproving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isPersonalizing, setIsPersonalizing] = useState(false);
   const { showToast } = useToast();
 
   const age = useMemo(() => {
@@ -124,7 +126,7 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
 
   async function handleApprove() {
     setIsApproving(true);
-    const response = await fetch(`/api/drafts/${draft.id}/approve`, { method: "POST" });
+    const response = await fetch(`/api/drafts/${currentDraft.id}/approve`, { method: "POST" });
     setIsApproving(false);
     if (response.ok) {
       showToast("Draft scheduled", "success");
@@ -135,7 +137,7 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   }
 
   async function handleSaveEdits() {
-    const response = await fetch(`/api/drafts/${draft.id}/edit`, {
+    const response = await fetch(`/api/drafts/${currentDraft.id}/edit`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ editedText }),
@@ -151,7 +153,7 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   async function handleRegenerate() {
     setIsRegenerating(true);
     showToast("Regenerating...", "success");
-    const response = await fetch(`/api/drafts/${draft.id}/regenerate`, {
+    const response = await fetch(`/api/drafts/${currentDraft.id}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ instruction: regenInstruction }),
@@ -165,11 +167,31 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
     showToast("Failed to save", "error");
   }
 
+  async function handlePersonalize() {
+    setIsPersonalizing(true);
+    try {
+      const response = await fetch(`/api/drafts/${currentDraft.id}/personalize`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to personalize");
+      }
+      const updated = (await response.json()) as Partial<DraftView>;
+      setCurrentDraft((prev) => ({ ...prev, ...updated }));
+      setEditedText((updated.editedText ?? updated.draftText ?? editedText) as string);
+      showToast("Personal angle added");
+    } catch {
+      showToast("Failed to personalize", "error");
+    } finally {
+      setIsPersonalizing(false);
+    }
+  }
+
   const charCount = editedText.length;
   const aiFlags = (() => {
-    if (!draft.aiTellFlags) return null;
+    if (!currentDraft.aiTellFlags) return null;
     try {
-      return JSON.parse(draft.aiTellFlags) as { words: string[]; structure: string[] };
+      return JSON.parse(currentDraft.aiTellFlags) as { words: string[]; structure: string[] };
     } catch {
       return null;
     }
@@ -180,24 +202,24 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
         <div className="flex items-center gap-3">
-          {draft.voiceScore != null ? (
+          {currentDraft.voiceScore != null ? (
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                draft.voiceScore >= 8
+                currentDraft.voiceScore != null && currentDraft.voiceScore >= 8
                   ? "bg-green-100 text-green-700"
-                  : draft.voiceScore >= 5
+                  : currentDraft.voiceScore != null && currentDraft.voiceScore >= 5
                     ? "bg-amber-100 text-amber-700"
                     : "bg-red-100 text-red-700"
               }`}
             >
-              Voice {draft.voiceScore}/10
+              Voice {currentDraft.voiceScore}/10
             </span>
           ) : (
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Voice learning</span>
           )}
-          {draft.researchItem ? (
-            <a href={draft.researchItem.url} target="_blank" rel="noopener noreferrer" className="max-w-xs truncate text-xs text-blue-600 hover:text-blue-700 hover:underline">
-              {draft.researchItem.title}
+          {currentDraft.researchItem ? (
+            <a href={currentDraft.researchItem.url} target="_blank" rel="noopener noreferrer" className="max-w-xs truncate text-xs text-blue-600 hover:text-blue-700 hover:underline">
+              {currentDraft.researchItem.title}
             </a>
           ) : null}
         </div>
@@ -225,13 +247,15 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             <textarea
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
               rows={12}
-              className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full resize-none select-text rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           ) : (
             <div
               onClick={() => setIsEditing(true)}
-              className="-mx-2 min-h-32 cursor-text rounded-lg p-2 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap transition-colors duration-150 hover:bg-slate-50"
+              className="-mx-2 min-h-32 cursor-text select-text rounded-lg p-2 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap transition-colors duration-150 hover:bg-slate-50"
             >
               {editedText}
             </div>
@@ -255,6 +279,20 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             >
               {isRegenerating ? "..." : "↺"}
             </button>
+          </div>
+
+          <div className="border-t border-slate-100 pt-1">
+            <button
+              onClick={handlePersonalize}
+              disabled={isPersonalizing}
+              className="flex items-center gap-2 text-sm text-slate-500 transition-colors duration-150 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="text-base">🎯</span>
+              <span>{isPersonalizing ? "Adding personal angle..." : "Add personal angle"}</span>
+            </button>
+            <p className="ml-6 mt-0.5 text-xs text-slate-400">
+              Connects this post to your research or Klaviyo experience where it fits
+            </p>
           </div>
         </div>
 
@@ -290,7 +328,7 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
         </button>
       </div>
 
-      {showRejectModal ? <RejectionModal draftId={draft.id} onClose={() => setShowRejectModal(false)} onRejected={onRemoved} /> : null}
+      {showRejectModal ? <RejectionModal draftId={currentDraft.id} onClose={() => setShowRejectModal(false)} onRejected={onRemoved} /> : null}
     </article>
   );
 }
