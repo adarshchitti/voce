@@ -13,6 +13,7 @@ import {
 import { getCronSecret } from "@/lib/linkedin/oauth";
 import { publishToLinkedIn } from "@/lib/linkedin/publish";
 import { generateDraft } from "@/lib/ai/generate-draft";
+import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
 export async function POST(request: Request) {
@@ -98,6 +99,13 @@ export async function POST(request: Request) {
         });
         for (const item of selected) {
           const generated = await generateDraft({
+            sentenceLength: voiceProfile?.sentenceLength,
+            hookStyle: voiceProfile?.hookStyle,
+            pov: voiceProfile?.pov,
+            toneMarkers: voiceProfile?.toneMarkers,
+            formattingStyle: voiceProfile?.formattingStyle,
+            userBannedWords: voiceProfile?.userBannedWords,
+            userNotes: voiceProfile?.userNotes,
             extractedPatterns: voiceProfile?.extractedPatterns ?? {},
             rawDescription: voiceProfile?.rawDescription ?? topics.join(", "),
             title: item.title,
@@ -105,6 +113,7 @@ export async function POST(request: Request) {
             url: item.url,
             rejections: recentRejections,
           });
+          const scanResult = await scanDraftForAITells(generated.draftText);
           const voiceScore = voiceProfile?.calibrated
             ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
             : null;
@@ -117,6 +126,12 @@ export async function POST(request: Request) {
             format: generated.format,
             sourceUrls: [item.url],
             voiceScore,
+            aiTellFlags: scanResult.clean
+              ? null
+              : JSON.stringify({
+                  words: scanResult.flaggedWords,
+                  structure: scanResult.structureIssues,
+                }),
             status: "pending",
             staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),
           });

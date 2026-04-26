@@ -18,21 +18,40 @@ export async function PUT(request: Request) {
   try {
     const userId = await requireAuth();
     const body = (await request.json()) as { rawDescription?: string; samplePosts?: string[] };
-    const samplePosts = body.samplePosts;
-    const updates: Partial<typeof voiceProfiles.$inferInsert> = { updatedAt: new Date() };
-    if (body.rawDescription !== undefined) updates.rawDescription = body.rawDescription;
-    if (samplePosts !== undefined) {
-      updates.samplePosts = samplePosts;
-      updates.calibrated = samplePosts.length >= 3;
-      if (samplePosts.length >= 3) updates.extractedPatterns = await extractVoicePatterns(samplePosts);
-    }
+    const samplePosts = body.samplePosts ?? [];
+    const patterns = samplePosts.length >= 3 ? await extractVoicePatterns(samplePosts) : null;
 
-    const existing = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
-    if (existing) {
-      await db.update(voiceProfiles).set(updates).where(eq(voiceProfiles.userId, userId));
-    } else {
-      await db.insert(voiceProfiles).values({ userId, rawDescription: updates.rawDescription ?? "", samplePosts: updates.samplePosts ?? [], extractedPatterns: updates.extractedPatterns, calibrated: updates.calibrated ?? false });
-    }
+    await db
+      .insert(voiceProfiles)
+      .values({
+        userId, // STAGE2: replace with supabase auth.uid()
+        rawDescription: body.rawDescription ?? null,
+        samplePosts,
+        sentenceLength: patterns?.sentenceLength ?? null,
+        hookStyle: patterns?.hookStyle ?? null,
+        pov: patterns?.pov ?? null,
+        toneMarkers: patterns?.toneMarkers ?? [],
+        topicsObserved: patterns?.topicsObserved ?? [],
+        formattingStyle: patterns?.formattingStyle ?? null,
+        extractedPatterns: patterns,
+        calibrated: samplePosts.length >= 3,
+      })
+      .onConflictDoUpdate({
+        target: voiceProfiles.userId,
+        set: {
+          rawDescription: body.rawDescription ?? null,
+          samplePosts,
+          sentenceLength: patterns?.sentenceLength ?? null,
+          hookStyle: patterns?.hookStyle ?? null,
+          pov: patterns?.pov ?? null,
+          toneMarkers: patterns?.toneMarkers ?? [],
+          topicsObserved: patterns?.topicsObserved ?? [],
+          formattingStyle: patterns?.formattingStyle ?? null,
+          extractedPatterns: patterns,
+          calibrated: samplePosts.length >= 3,
+          updatedAt: new Date(),
+        },
+      });
     return Response.json({ success: true });
   } catch {
     return Response.json({ error: "Failed to update voice profile" }, { status: 400 });

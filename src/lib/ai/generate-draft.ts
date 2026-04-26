@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { AI_TELL_BLOCKLIST_PROMPT } from "@/lib/ai/ai-tells";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -7,7 +8,14 @@ function getClient() {
 }
 
 export async function generateDraft(input: {
-  extractedPatterns: unknown;
+  sentenceLength?: string | null;
+  hookStyle?: string | null;
+  pov?: string | null;
+  toneMarkers?: string[] | null;
+  formattingStyle?: string | null;
+  userBannedWords?: string[] | null;
+  userNotes?: string | null;
+  extractedPatterns?: unknown;
   rawDescription: string;
   title: string;
   summary: string;
@@ -26,6 +34,19 @@ export async function generateDraft(input: {
     ? `\n\nADDITIONAL INSTRUCTION FROM USER: ${input.instruction}`
     : "";
 
+  const hasStructuredFields =
+    input.sentenceLength || input.hookStyle || input.pov;
+
+  const voiceSection = hasStructuredFields
+    ? `- Sentence length: ${input.sentenceLength ?? "medium"}
+- Hook style: ${input.hookStyle ?? "bold_claim"}
+- Point of view: ${input.pov ?? "first_person_singular"}
+- Tone: ${input.toneMarkers?.join(", ") ?? "professional, direct"}
+- Formatting: ${input.formattingStyle ?? "emoji_light"}
+- Additional notes: ${input.userNotes ?? "none"}
+- Never use these words/phrases: ${input.userBannedWords?.join(", ") ?? "none"}`
+    : JSON.stringify(input.extractedPatterns);
+
   const client = getClient();
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
@@ -34,7 +55,7 @@ export async function generateDraft(input: {
 that sound EXACTLY like this specific person - not like generic LinkedIn AI content.
 
 Voice profile:
-${JSON.stringify(input.extractedPatterns)}
+${voiceSection}
 
 Raw voice description from the creator:
 ${input.rawDescription}
@@ -42,7 +63,9 @@ ${input.rawDescription}
 STRICT RULES:
 - Never exceed 3000 characters total (LinkedIn's hard limit)
 - Every factual claim must come directly from the provided source article
-- Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}`,
+- Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}
+
+${AI_TELL_BLOCKLIST_PROMPT}`,
     messages: [
       {
         role: "user",

@@ -14,6 +14,7 @@ export type DraftView = {
   status: string;
   staleAfter: string;
   generatedAt: string;
+  aiTellFlags?: string | null;
   researchItem: {
     title: string;
     url: string;
@@ -59,6 +60,14 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
 
   const stale = new Date(draft.staleAfter).getTime() < Date.now();
   const counterColor = text.length > 2800 ? "text-red-600" : "text-gray-500";
+  const aiFlags = (() => {
+    if (!draft.aiTellFlags) return null;
+    try {
+      return JSON.parse(draft.aiTellFlags) as { words: string[]; structure: string[] };
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -71,6 +80,21 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
           {draft.researchItem.title}
         </a>
       ) : null}
+      {aiFlags && (aiFlags.words.length > 0 || aiFlags.structure.length > 0) && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <span className="font-medium">AI tell detected — review before approving</span>
+          {aiFlags.words.length > 0 && (
+            <div className="mt-1">
+              Words: {aiFlags.words.join(", ")}
+            </div>
+          )}
+          {aiFlags.structure.length > 0 && (
+            <div className="mt-1">
+              Structure: {aiFlags.structure.join("; ")}
+            </div>
+          )}
+        </div>
+      )}
 
       {editMode ? (
         <>

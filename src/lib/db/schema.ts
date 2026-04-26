@@ -43,6 +43,7 @@ export const draftQueue = pgTable("draft_queue", {
   format: text("format").notNull().default("text_post"),
   sourceUrls: text("source_urls").array().default(sql`'{}'`),
   voiceScore: integer("voice_score"),
+  aiTellFlags: text("ai_tell_flags"),
   status: text("status").notNull().default("pending"),
   staleAfter: timestamp("stale_after", { withTimezone: true }).notNull(),
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -81,6 +82,28 @@ export const voiceProfiles = pgTable("voice_profiles", {
   userId: text("user_id").notNull().unique(), // STAGE2: change to uuid
   rawDescription: text("raw_description"),
   samplePosts: text("sample_posts").array().default(sql`'{}'`),
+
+  // LLM-extracted fields — auto-populated when sample posts are analysed
+  // Each field is independently updatable without re-running full extraction
+  sentenceLength: text("sentence_length"),
+  // 'short' | 'medium' | 'long'
+  hookStyle: text("hook_style"),
+  // 'question' | 'bold_claim' | 'personal_story' | 'data_point' | 'contrarian'
+  pov: text("pov"),
+  // 'first_person_singular' | 'first_person_plural' | 'third_person'
+  toneMarkers: text("tone_markers").array().default(sql`'{}'`),
+  // e.g. ['direct', 'contrarian', 'data-driven']
+  topicsObserved: text("topics_observed").array().default(sql`'{}'`),
+  formattingStyle: text("formatting_style"),
+  // 'emoji_heavy' | 'emoji_light' | 'no_emoji'
+
+  // User-controlled overrides — never touched by LLM extraction
+  userBannedWords: text("user_banned_words").array().default(sql`'{}'`),
+  // User adds words/phrases they never want in their posts
+  userNotes: text("user_notes"),
+  // Freetext override: "I never use bullet lists. I always end on a question."
+
+  // Raw backup of last LLM extraction — kept for debugging, not used in prompts
   extractedPatterns: json("extracted_patterns"),
   calibrated: boolean("calibrated").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
