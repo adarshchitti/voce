@@ -90,7 +90,8 @@ Total draftText length must be under 3000 characters.`,
   });
 
   const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
-  return JSON.parse(text) as {
+  const clean = text.replace(/```json\n?|```\n?/g, "").trim();
+  return JSON.parse(clean) as {
     hook: string;
     draftText: string;
     format: string;

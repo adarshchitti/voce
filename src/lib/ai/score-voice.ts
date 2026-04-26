@@ -40,6 +40,7 @@ Return JSON:
     ],
   });
   const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
-  const parsed = JSON.parse(text) as { total: number };
+  const clean = text.replace(/```json\n?|```\n?/g, "").trim();
+  const parsed = JSON.parse(clean) as { total: number };
   return Math.max(1, Math.min(10, Math.round(parsed.total)));
 }

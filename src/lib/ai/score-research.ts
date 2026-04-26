@@ -42,7 +42,8 @@ Originality (0-1): Does this offer a non-obvious angle or underreported perspect
     ],
   });
 
-  const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
-  const parsed = JSON.parse(text) as { relevance: number; originality: number };
-  return parsed;
+  const text = response.content[0]?.type === "text" ? response.content[0].text : "{}"
+  const clean = text.replace(/```json\n?|```\n?/g, "").trim()
+  const parsed = JSON.parse(clean) as { relevance: number; originality: number }
+  return parsed
 }
