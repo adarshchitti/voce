@@ -22,8 +22,9 @@ export async function POST(request: Request) {
       try {
         rawItems.push(...(await fetchTavilyItems(query, "news")));
         rawItems.push(...(await fetchTavilyItems(query, "search")));
-      } catch {
+      } catch (err) {
         errors += 1;
+        console.error("Insert failed:", err instanceof Error ? err.message : String(err))
       }
     }
     for (const url of rssUrls) rawItems.push(...(await fetchRssItems(url)));
@@ -52,13 +53,19 @@ export async function POST(request: Request) {
           publishedAt: item.publishedAt?.toISOString() ?? "unknown",
         });
         await db.insert(researchItems).values({
-          ...item,
+          url: item.url,
+          title: item.title,
+          summary: item.summary,
+          sourceType: item.sourceType,
+          publishedAt: item.publishedAt,
+          dedupHash: item.dedupHash,
           relevanceScore: String(score.relevance),
           originalityScore: String(score.originality),
-        });
+        }).onConflictDoNothing();
         inserted += 1;
-      } catch {
+      } catch (err) {
         errors += 1;
+        console.error("Insert failed:", err instanceof Error ? err.message : String(err))
       }
     }
 
