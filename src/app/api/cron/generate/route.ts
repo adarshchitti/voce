@@ -17,6 +17,8 @@ import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
+export const GET = POST;
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");

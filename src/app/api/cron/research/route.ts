@@ -6,6 +6,8 @@ import { fetchRssItems } from "@/lib/research/rss";
 import { scoreResearchItem } from "@/lib/ai/score-research";
 import { getCronSecret } from "@/lib/linkedin/oauth";
 
+export const GET = POST;
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
