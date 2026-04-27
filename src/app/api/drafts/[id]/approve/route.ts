@@ -29,7 +29,11 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       scheduledAt,
     });
     return Response.json({ scheduledAt: scheduledAt.toISOString() });
-  } catch {
-    return Response.json({ error: "Failed to approve draft" }, { status: 400 });
+  } catch (error) {
+    console.error('Approve error:', error)
+    return Response.json({ 
+      error: "Failed to approve draft",
+      detail: error instanceof Error ? error.message : String(error)
+    }, { status: 400 })
   }
 }
