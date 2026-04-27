@@ -14,6 +14,49 @@ type Post = {
   manualComments: number | null;
 };
 
+function RetryButton({ postId }: { postId: string }) {
+  const [retrying, setRetrying] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/posts/${postId}/retry`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Retry failed");
+      } else {
+        setDone(true);
+        // Refresh the page to show updated status
+        window.location.reload();
+      }
+    } catch {
+      setError("Network error - try again");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  if (done) {
+    return <span className="text-xs font-medium text-green-600">Published ✓</span>;
+  }
+
+  return (
+    <div>
+      <button
+        onClick={handleRetry}
+        disabled={retrying}
+        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {retrying ? "Retrying..." : "Retry"}
+      </button>
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 function PostMetricsInput({ post }: { post: Post }) {
   const [impressions, setImpressions] = useState<string | number>(post.manualImpressions ?? "");
   const [reactions, setReactions] = useState<string | number>(post.manualReactions ?? "");
@@ -160,9 +203,7 @@ export default function HistoryPage() {
                     <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{post.failureReason}</p>
                   </div>
                   <div className="flex-shrink-0">
-                    <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700" disabled>
-                      Retry
-                    </button>
+                    <RetryButton postId={post.id} />
                   </div>
                 </div>
               </div>

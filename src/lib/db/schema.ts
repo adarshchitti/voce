@@ -138,6 +138,19 @@ export const userSettings = pgTable("user_settings", {
   preferredTime: time("preferred_time").notNull().default("09:00"),
   timezone: text("timezone").notNull().default("UTC"),
   jitterMinutes: integer("jitter_minutes").notNull().default(15),
+  // AI tell scanner sensitivity settings
+  // Controls which patterns trigger warnings in the inbox
+  tellFlagNumberedLists: text("tell_flag_numbered_lists").notNull().default("three_plus"),
+  // 'always' | 'three_plus' | 'never'
+  // three_plus = only flag if more than 3 items in the list (default)
+  tellFlagEmDash: boolean("tell_flag_em_dash").notNull().default(true),
+  // Flag em dash overuse (more than once per post)
+  tellFlagEngagementBeg: boolean("tell_flag_engagement_beg").notNull().default(true),
+  // Flag "what do you think? drop a comment" style endings
+  tellFlagBannedWords: boolean("tell_flag_banned_words").notNull().default(true),
+  // Flag words from the banned words list (delve, leverage etc)
+  tellFlagEveryLine: boolean("tell_flag_every_line").notNull().default(true),
+  // Flag when every sentence is on its own line (AI accordion)
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

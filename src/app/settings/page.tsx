@@ -58,6 +58,14 @@ export default function SettingsPage() {
     timezone: "America/New_York",
     jitterMinutes: 15,
   });
+  const [tellFlagNumberedLists, setTellFlagNumberedLists] = useState<"always" | "three_plus" | "never">("three_plus");
+  const [tellFlags, setTellFlags] = useState({
+    tellFlagBannedWords: true,
+    tellFlagEmDash: true,
+    tellFlagEngagementBeg: true,
+    tellFlagEveryLine: true,
+  });
+  const [savingTellSettings, setSavingTellSettings] = useState(false);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const { showToast } = useToast();
 
@@ -102,6 +110,13 @@ export default function SettingsPage() {
           preferredTime: d.settings?.preferredTime ?? "09:00",
           timezone: d.settings?.timezone ?? "America/New_York",
           jitterMinutes: d.settings?.jitterMinutes ?? 15,
+        });
+        setTellFlagNumberedLists(d.settings?.tellFlagNumberedLists ?? "three_plus");
+        setTellFlags({
+          tellFlagBannedWords: d.settings?.tellFlagBannedWords ?? true,
+          tellFlagEmDash: d.settings?.tellFlagEmDash ?? true,
+          tellFlagEngagementBeg: d.settings?.tellFlagEngagementBeg ?? true,
+          tellFlagEveryLine: d.settings?.tellFlagEveryLine ?? true,
         });
       })
       .catch(() => setLinkedinToken(null));
@@ -188,6 +203,30 @@ export default function SettingsPage() {
       }),
     });
     showToast(response.ok ? "Preferences saved" : "Failed to save", response.ok ? "success" : "error");
+  }
+
+  const toggleTellFlag = (key: keyof typeof tellFlags) => {
+    setTellFlags((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  async function handleSaveTellSettings() {
+    setSavingTellSettings(true);
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tellFlagNumberedLists,
+          tellFlagBannedWords: tellFlags.tellFlagBannedWords,
+          tellFlagEmDash: tellFlags.tellFlagEmDash,
+          tellFlagEngagementBeg: tellFlags.tellFlagEngagementBeg,
+          tellFlagEveryLine: tellFlags.tellFlagEveryLine,
+        }),
+      });
+      showToast(response.ok ? "Content style preferences saved" : "Failed to save", response.ok ? "success" : "error");
+    } finally {
+      setSavingTellSettings(false);
+    }
   }
 
   const sampleCount = samplePostsText
@@ -450,6 +489,79 @@ export default function SettingsPage() {
 
       <SettingsSection title="Scheduling" description="When approved posts are published">
         <SchedulingForm initialSettings={schedulingSettings} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Content style preferences"
+        description="Control which patterns the AI tell scanner flags in your drafts"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">Numbered lists</label>
+            <div className="flex gap-2">
+              {[
+                { value: "always", label: "Always flag" },
+                { value: "three_plus", label: "Flag if >3 items" },
+                { value: "never", label: "Never flag" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setTellFlagNumberedLists(opt.value as "always" | "three_plus" | "never")}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    tellFlagNumberedLists === opt.value
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-slate-400">
+              Default: flag only if more than 3 items - short numbered comparisons are fine
+            </p>
+          </div>
+
+          {[
+            { key: "tellFlagBannedWords", label: "Banned words", desc: "delve, leverage, ecosystem etc" },
+            { key: "tellFlagEmDash", label: "Em dash overuse", desc: "more than one em dash per post" },
+            {
+              key: "tellFlagEngagementBeg",
+              label: "Engagement begs",
+              desc: '"what do you think? drop a comment"',
+            },
+            { key: "tellFlagEveryLine", label: "Every-line-break format", desc: "each sentence on its own line" },
+          ].map((item) => (
+            <div key={item.key} className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0">
+              <div>
+                <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                <p className="text-xs text-slate-400">{item.desc}</p>
+              </div>
+              <button
+                onClick={() => toggleTellFlag(item.key as keyof typeof tellFlags)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                  tellFlags[item.key as keyof typeof tellFlags] ? "bg-blue-600" : "bg-slate-200"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    tellFlags[item.key as keyof typeof tellFlags] ? "translate-x-4" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          ))}
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleSaveTellSettings}
+              disabled={savingTellSettings}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+            >
+              {savingTellSettings ? "Saving..." : "Save preferences"}
+            </button>
+          </div>
+        </div>
       </SettingsSection>
     </div>
   );

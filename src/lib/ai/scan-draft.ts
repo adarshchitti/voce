@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_TELL_SCAN_PROMPT } from "@/lib/ai/ai-tells";
+import {
+  AI_TELL_SCAN_PROMPT,
+  DEFAULT_SENSITIVITY,
+  type SensitivitySettings,
+} from "@/lib/ai/ai-tells";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -13,7 +17,10 @@ export interface ScanResult {
   clean: boolean;
 }
 
-export async function scanDraftForAITells(draftText: string): Promise<ScanResult> {
+export async function scanDraftForAITells(
+  draftText: string,
+  sensitivity: SensitivitySettings = DEFAULT_SENSITIVITY,
+): Promise<ScanResult> {
   const client = getClient();
 
   try {
@@ -24,7 +31,7 @@ export async function scanDraftForAITells(draftText: string): Promise<ScanResult
       messages: [
         {
           role: "user",
-          content: AI_TELL_SCAN_PROMPT(draftText),
+          content: AI_TELL_SCAN_PROMPT(draftText, sensitivity),
         },
       ],
     });

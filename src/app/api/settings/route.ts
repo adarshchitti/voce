@@ -20,6 +20,11 @@ const schedulingPreferencesSchema = z.object({
   preferredTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   timezone: z.string().min(1).optional(),
   jitterMinutes: z.number().int().min(0).max(30).optional(),
+  tellFlagNumberedLists: z.enum(["always", "three_plus", "never"]).optional(),
+  tellFlagEmDash: z.boolean().optional(),
+  tellFlagEngagementBeg: z.boolean().optional(),
+  tellFlagBannedWords: z.boolean().optional(),
+  tellFlagEveryLine: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -70,17 +75,27 @@ export async function PATCH(request: Request) {
         preferredTime: values.preferredTime ?? defaults.preferredTime,
         timezone: values.timezone ?? defaults.timezone,
         jitterMinutes: values.jitterMinutes ?? defaults.jitterMinutes,
+        tellFlagNumberedLists: values.tellFlagNumberedLists ?? "three_plus",
+        tellFlagEmDash: values.tellFlagEmDash ?? true,
+        tellFlagEngagementBeg: values.tellFlagEngagementBeg ?? true,
+        tellFlagBannedWords: values.tellFlagBannedWords ?? true,
+        tellFlagEveryLine: values.tellFlagEveryLine ?? true,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: userSettings.userId,
         set: {
-          cadenceMode: values.cadenceMode,
-          draftsPerDay: values.draftsPerDay,
-          preferredDays: values.preferredDays,
-          preferredTime: values.preferredTime,
-          timezone: values.timezone,
-          jitterMinutes: values.jitterMinutes,
+          ...(values.cadenceMode !== undefined && { cadenceMode: values.cadenceMode }),
+          ...(values.draftsPerDay !== undefined && { draftsPerDay: values.draftsPerDay }),
+          ...(values.preferredDays !== undefined && { preferredDays: values.preferredDays }),
+          ...(values.preferredTime !== undefined && { preferredTime: values.preferredTime }),
+          ...(values.timezone !== undefined && { timezone: values.timezone }),
+          ...(values.jitterMinutes !== undefined && { jitterMinutes: values.jitterMinutes }),
+          ...(values.tellFlagNumberedLists !== undefined && { tellFlagNumberedLists: values.tellFlagNumberedLists }),
+          ...(values.tellFlagEmDash !== undefined && { tellFlagEmDash: values.tellFlagEmDash }),
+          ...(values.tellFlagEngagementBeg !== undefined && { tellFlagEngagementBeg: values.tellFlagEngagementBeg }),
+          ...(values.tellFlagBannedWords !== undefined && { tellFlagBannedWords: values.tellFlagBannedWords }),
+          ...(values.tellFlagEveryLine !== undefined && { tellFlagEveryLine: values.tellFlagEveryLine }),
           updatedAt: new Date(),
         },
       });

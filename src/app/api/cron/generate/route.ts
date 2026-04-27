@@ -1,9 +1,7 @@
-import { and, asc, desc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   draftQueue,
-  linkedinTokens,
-  posts,
   rejectionReasons,
   researchItems,
   topicSubscriptions,
@@ -12,7 +10,6 @@ import {
   voiceProfiles,
 } from "@/lib/db/schema";
 import { getCronSecret } from "@/lib/linkedin/oauth";
-import { publishToLinkedIn } from "@/lib/linkedin/publish";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
@@ -32,58 +29,7 @@ export async function POST(request: Request) {
       .set({ status: "archived" })
       .where(and(eq(draftQueue.status, "pending"), lte(draftQueue.staleAfter, new Date())));
 
-    let postsPublished = 0;
-    let postsFailed = 0;
     let errors = 0;
-
-    const scheduledPosts = await db.query.posts.findMany({
-      where: and(eq(posts.status, "scheduled"), lte(posts.scheduledAt, new Date())),
-    });
-    for (const post of scheduledPosts) {
-      try {
-        const token = await db.query.linkedinTokens.findFirst({ where: eq(linkedinTokens.userId, post.userId) });
-        if (!token || token.status === "expired" || token.tokenExpiry < new Date()) {
-          await db.update(linkedinTokens).set({ status: "expired", updatedAt: new Date() }).where(eq(linkedinTokens.userId, post.userId));
-          await db.update(posts).set({ status: "failed", failureReason: "LinkedIn token expired. Please reconnect LinkedIn in Settings." }).where(eq(posts.id, post.id));
-          postsFailed += 1;
-          continue;
-        }
-        await db.update(posts).set({ status: "publishing" }).where(eq(posts.id, post.id));
-        const draft = await db.query.draftQueue.findFirst({
-          where: eq(draftQueue.id, post.draftId),
-        });
-        const articleUrl = draft?.sourceUrls?.[0] ?? null;
-        let result = await publishToLinkedIn({
-          accessToken: token.accessToken,
-          personUrn: token.personUrn,
-          text: post.contentSnapshot,
-          articleUrl,
-        });
-        if (!result.success && articleUrl && result.error.toLowerCase().includes("article")) {
-          console.warn(`Article attachment failed, retrying without: ${result.error}`);
-          result = await publishToLinkedIn({
-            accessToken: token.accessToken,
-            personUrn: token.personUrn,
-            text: post.contentSnapshot,
-            articleUrl: null,
-          });
-        }
-        if (result.success) {
-          await db.update(posts).set({ status: "published", linkedinPostId: result.postId, publishedAt: new Date() }).where(eq(posts.id, post.id));
-          await db.update(draftQueue).set({ status: "published" }).where(eq(draftQueue.id, post.draftId));
-          postsPublished += 1;
-        } else if (result.error === "TOKEN_EXPIRED") {
-          await db.update(linkedinTokens).set({ status: "expired", updatedAt: new Date() }).where(eq(linkedinTokens.userId, post.userId));
-          await db.update(posts).set({ status: "failed", failureReason: "LinkedIn token expired. Please reconnect LinkedIn in Settings." }).where(eq(posts.id, post.id));
-          postsFailed += 1;
-        } else {
-          await db.update(posts).set({ status: "failed", failureReason: result.error }).where(eq(posts.id, post.id));
-          postsFailed += 1;
-        }
-      } catch {
-        errors += 1;
-      }
-    }
 
     const settingsRows = await db.select().from(userSettings).where(notInArray(userSettings.cadenceMode, ["on_demand"]));
     let usersProcessed = 0;
@@ -94,6 +40,13 @@ export async function POST(request: Request) {
         if (settings.cadenceMode === "weekly" && new Date().getUTCDay() !== 6) continue;
         usersProcessed += 1;
         const userId = settings.userId;
+        const sensitivitySettings = {
+          tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as "always" | "three_plus" | "never",
+          tellFlagEmDash: settings.tellFlagEmDash ?? true,
+          tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
+          tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
+          tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
+        };
         const [pendingCount] = await db.select({ value: sql<number>`count(*)` }).from(draftQueue).where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")));
         if (pendingCount.value >= settings.draftsPerDay) continue;
         const subscriptions = await db.select().from(topicSubscriptions).where(and(eq(topicSubscriptions.userId, userId), eq(topicSubscriptions.active, true)));
@@ -135,7 +88,7 @@ export async function POST(request: Request) {
             url: item.url,
             rejections: recentRejections,
           });
-          const scanResult = await scanDraftForAITells(generated.draftText);
+          const scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
           const voiceScore = voiceProfile?.calibrated
             ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
             : null;
@@ -165,7 +118,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const result = { usersProcessed, draftsGenerated, postsPublished, postsFailed, errors };
+    const result = { usersProcessed, draftsGenerated, errors };
     await db
       .insert(cronRuns)
       .values({
@@ -173,7 +126,7 @@ export async function POST(request: Request) {
         durationMs: Date.now() - startTime,
         result,
         errorCount: errors,
-        success: draftsGenerated > 0 || postsPublished > 0,
+        success: draftsGenerated > 0,
       })
       .catch((err) => {
         console.error("Failed to log cron run:", err);

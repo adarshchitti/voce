@@ -36,37 +36,57 @@ BANNED STRUCTURES:
 - Max 3 hashtags, placed at the very end only if they add value
 `.trim();
 
-export const AI_TELL_SCAN_PROMPT = (draftText: string) => `
+export interface SensitivitySettings {
+  tellFlagNumberedLists: "always" | "three_plus" | "never";
+  tellFlagEmDash: boolean;
+  tellFlagEngagementBeg: boolean;
+  tellFlagBannedWords: boolean;
+  tellFlagEveryLine: boolean;
+}
+
+export const DEFAULT_SENSITIVITY: SensitivitySettings = {
+  tellFlagNumberedLists: "three_plus",
+  tellFlagEmDash: true,
+  tellFlagEngagementBeg: true,
+  tellFlagBannedWords: true,
+  tellFlagEveryLine: true,
+};
+
+export const AI_TELL_SCAN_PROMPT = (
+  draftText: string,
+  sensitivity: SensitivitySettings = DEFAULT_SENSITIVITY,
+) => `
 Scan this LinkedIn post for AI-generated content tells. Be strict.
 
 POST TO SCAN:
 ${draftText}
 
-Check for these specific issues:
+Check ONLY the following (skip any category marked as disabled):
 
-BANNED WORDS: delve, underscore, tapestry, nuanced, leverage (verb), ecosystem,
-paradigm, foster, crucial, navigate (metaphor), unleash, supercharge, revolutionize,
-pivotal, groundbreaking, game-changing, transformative, holistic, robust, synergy,
-spearhead, cutting-edge, seamlessly, streamline
+${sensitivity.tellFlagBannedWords ? `BANNED WORDS (check for these): delve, underscore, tapestry,
+nuanced, leverage (verb), ecosystem, paradigm, foster, crucial, navigate (metaphor),
+unleash, supercharge, revolutionize, pivotal, groundbreaking, game-changing,
+transformative, holistic, robust, synergy, spearhead, cutting-edge, seamlessly` : "// BANNED WORDS: disabled by user settings"}
 
-BANNED PHRASES: "it's important to note", "in conclusion", "hot take", "unpopular opinion",
-"nobody talks about this", "what do you think", "let me know in the comments",
-"this changes everything", "I've been thinking about this"
+${sensitivity.tellFlagEngagementBeg ? `ENGAGEMENT BEGS (check for): "what do you think", "let me know
+in the comments", "drop a comment", "this changes everything", "hot take",
+"unpopular opinion"` : "// ENGAGEMENT BEGS: disabled by user settings"}
 
-STRUCTURAL TELLS:
-- Every sentence on its own line (count blank lines between sentences)
-- Numbered list as main body structure
-- Ends with engagement beg
-- Emojis used as bullet starters
-- More than 3 hashtags
-- Em dash used more than once
+${sensitivity.tellFlagEveryLine ? `EVERY LINE BREAK (check for): every sentence on its own line
+with blank lines between each (AI accordion pattern)` : "// EVERY LINE BREAK: disabled by user settings"}
+
+${sensitivity.tellFlagEmDash ? "EM DASH OVERUSE (check for): em dash - used more than once in the post" : "// EM DASH: disabled by user settings"}
+
+${sensitivity.tellFlagNumberedLists === "always" ? "NUMBERED LIST (check for): any numbered list in the post body" :
+  sensitivity.tellFlagNumberedLists === "three_plus" ? "NUMBERED LIST (check for): numbered list with MORE THAN 3 items" :
+  "// NUMBERED LIST: disabled by user settings"}
 
 Return JSON only, no other text:
 {
   "flaggedWords": ["exact word or phrase found"],
-  "structureIssues": ["description of structural tell"],
+  "structureIssues": ["description of structural issue"],
   "clean": true
 }
 
-Set "clean": true only if flaggedWords is empty AND structureIssues is empty.
-If anything is flagged, set "clean": false.`;
+Set "clean": true ONLY if both arrays are empty.
+If sensitivity is set to disable a category, do not flag anything in that category.`;
