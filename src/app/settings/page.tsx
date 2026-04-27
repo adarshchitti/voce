@@ -3,6 +3,7 @@
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
+import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
 
 interface LinkedInTokenView {
   status: "active" | "expired" | string;
@@ -49,6 +50,14 @@ export default function SettingsPage() {
   const [userBannedWordsText, setUserBannedWordsText] = useState("");
   const [userNotes, setUserNotes] = useState("");
   const [linkedinToken, setLinkedinToken] = useState<LinkedInTokenView | null>(null);
+  const [schedulingSettings, setSchedulingSettings] = useState<SchedulingSettings>({
+    cadenceMode: "daily",
+    draftsPerDay: 3,
+    preferredDays: ["monday", "tuesday", "wednesday", "thursday"],
+    preferredTime: "09:00",
+    timezone: "America/New_York",
+    jitterMinutes: 15,
+  });
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const { showToast } = useToast();
 
@@ -86,6 +95,14 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((d) => {
         setLinkedinToken((d.linkedinToken ?? null) as LinkedInTokenView | null);
+        setSchedulingSettings({
+          cadenceMode: d.settings?.cadenceMode ?? "daily",
+          draftsPerDay: d.settings?.draftsPerDay ?? 3,
+          preferredDays: d.settings?.preferredDays ?? ["monday", "tuesday", "wednesday", "thursday"],
+          preferredTime: d.settings?.preferredTime ?? "09:00",
+          timezone: d.settings?.timezone ?? "America/New_York",
+          jitterMinutes: d.settings?.jitterMinutes ?? 15,
+        });
       })
       .catch(() => setLinkedinToken(null));
   }, []);
@@ -432,7 +449,7 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection title="Scheduling" description="When approved posts are published">
-        <p className="text-sm text-slate-600">Scheduling preferences are currently managed automatically by the publish pipeline.</p>
+        <SchedulingForm initialSettings={schedulingSettings} />
       </SettingsSection>
     </div>
   );

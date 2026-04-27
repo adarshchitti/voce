@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { linkedinTokens, userSettings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth";
@@ -11,6 +12,15 @@ const defaults = {
   timezone: "UTC",
   jitterMinutes: 15,
 };
+
+const schedulingPreferencesSchema = z.object({
+  cadenceMode: z.enum(["daily", "weekly", "on_demand"]).optional(),
+  draftsPerDay: z.number().int().min(1).max(5).optional(),
+  preferredDays: z.array(z.string()).optional(),
+  preferredTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  timezone: z.string().min(1).optional(),
+  jitterMinutes: z.number().int().min(0).max(30).optional(),
+});
 
 export async function GET() {
   try {
@@ -36,5 +46,47 @@ export async function PUT(request: Request) {
     return Response.json({ success: true });
   } catch {
     return Response.json({ error: "Failed to update settings" }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const userId = await requireAuth();
+    const body = await request.json();
+    const parsed = schedulingPreferencesSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return Response.json({ error: "Invalid scheduling preferences" }, { status: 400 });
+    }
+
+    const values = parsed.data;
+    await db
+      .insert(userSettings)
+      .values({
+        userId,
+        cadenceMode: values.cadenceMode ?? defaults.cadenceMode,
+        draftsPerDay: values.draftsPerDay ?? defaults.draftsPerDay,
+        preferredDays: values.preferredDays ?? defaults.preferredDays,
+        preferredTime: values.preferredTime ?? defaults.preferredTime,
+        timezone: values.timezone ?? defaults.timezone,
+        jitterMinutes: values.jitterMinutes ?? defaults.jitterMinutes,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: {
+          cadenceMode: values.cadenceMode,
+          draftsPerDay: values.draftsPerDay,
+          preferredDays: values.preferredDays,
+          preferredTime: values.preferredTime,
+          timezone: values.timezone,
+          jitterMinutes: values.jitterMinutes,
+          updatedAt: new Date(),
+        },
+      });
+
+    return Response.json({ success: true });
+  } catch {
+    return Response.json({ error: "Failed to update preferences" }, { status: 400 });
   }
 }
