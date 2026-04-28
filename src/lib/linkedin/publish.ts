@@ -6,11 +6,13 @@ export async function publishToLinkedIn({
   personUrn,
   text,
   articleUrl,
+  articleTitle,
 }: {
-  accessToken: string;
-  personUrn: string;
-  text: string;
-  articleUrl?: string | null;
+  accessToken: string
+  personUrn: string
+  text: string
+  articleUrl?: string | null
+  articleTitle?: string | null
 }): Promise<{ success: true; postId: string } | { success: false; error: string }> {
   const postBody: Record<string, unknown> = {
     author: personUrn,
@@ -29,6 +31,7 @@ export async function publishToLinkedIn({
     postBody.content = {
       article: {
         source: articleUrl,
+        title: articleTitle ?? 'Read more',
       },
     };
   }

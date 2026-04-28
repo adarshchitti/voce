@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { posts, draftQueue, linkedinTokens, cronRuns } from "@/lib/db/schema";
+import { posts, draftQueue, linkedinTokens, cronRuns, researchItems } from "@/lib/db/schema";
 import { eq, and, lte } from "drizzle-orm";
 import { USER_ID } from "@/lib/constants";
 import { publishToLinkedIn } from "@/lib/linkedin/publish";
@@ -52,16 +52,23 @@ export async function GET(request: Request) {
         const draft = await db.query.draftQueue.findFirst({
           where: eq(draftQueue.id, post.draftId),
         });
+        const researchItem = draft?.researchItemId
+          ? await db.query.researchItems.findFirst({
+              where: eq(researchItems.id, draft.researchItemId)
+            })
+          : null
         const articleUrl = draft?.sourceUrls?.[0] ?? null;
-
+        const articleTitle = researchItem?.title ?? null;
+          
         let result;
         try {
           result = await publishToLinkedIn({
-            accessToken: token.accessToken,
-            personUrn: token.personUrn,
-            text: post.contentSnapshot,
-            articleUrl,
-          });
+              accessToken: token.accessToken,
+              personUrn: token.personUrn,
+              text: post.contentSnapshot,
+              articleUrl,
+              articleTitle,
+         });
         } catch (err) {
           // If article attachment caused the failure, retry without it
           const reason = err instanceof Error ? err.message : String(err);
