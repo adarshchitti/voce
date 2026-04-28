@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
-import { scoreVoice } from "@/lib/ai/score-voice";
+import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,6 +18,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
     const rejections = await db.query.rejectionReasons.findMany({ where: eq(rejectionReasons.userId, userId), orderBy: [desc(rejectionReasons.createdAt)], limit: 10 });
     const generated = await generateDraft({
+      sentenceLength: voiceProfile?.sentenceLength,
+      hookStyle: voiceProfile?.hookStyle,
+      pov: voiceProfile?.pov,
+      toneMarkers: voiceProfile?.toneMarkers,
+      formattingStyle: voiceProfile?.formattingStyle,
+      paragraphStyle: voiceProfile?.paragraphStyle,
+      postStructureTemplate: voiceProfile?.postStructureTemplate,
+      signaturePhrases: voiceProfile?.signaturePhrases,
+      generationGuidance: voiceProfile?.generationGuidance,
+      emojiContexts: voiceProfile?.emojiContexts,
+      emojiExamples: voiceProfile?.emojiExamples,
+      emojiNeverOverride: voiceProfile?.emojiNeverOverride,
+      emojiFrequency: (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+      userBannedWords: voiceProfile?.userBannedWords,
+      userNotes: voiceProfile?.userNotes,
       extractedPatterns: voiceProfile?.extractedPatterns ?? {},
       rawDescription: voiceProfile?.rawDescription ?? "",
       title: researchItem.title,
@@ -26,7 +41,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       rejections,
       instruction: body.instruction,
     });
-    const voiceScore = voiceProfile?.calibrated ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText }) : null;
+    const voiceResult = voiceProfile?.calibrated ? await scoreVoiceDetailed({ voiceProfile, draftText: generated.draftText }) : null;
+    const voiceScore = voiceResult?.score ?? null;
     const [created] = await db
       .insert(draftQueue)
       .values({
@@ -37,12 +53,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         format: generated.format,
         sourceUrls: [researchItem.url],
         voiceScore,
+        aiTellFlags: voiceResult?.flags?.length ? JSON.stringify({ words: [], structure: [], voice: voiceResult.flags }) : null,
         status: "pending",
         staleAfter: original.staleAfter,
       })
       .returning();
     await db.update(draftQueue).set({ status: "rejected" }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
-    await db.insert(rejectionReasons).values({ userId, draftId: id, reasonCode: "other", freeText: `Regenerated: ${body.instruction}` });
+    await db.insert(rejectionReasons).values({ userId, draftId: id, reasonCode: "other", freeText: `Regenerated: ${body.instruction}`, rejectionType: "other" });
     return Response.json({ draft: created });
   } catch {
     return Response.json({ error: "Failed to regenerate draft" }, { status: 400 });

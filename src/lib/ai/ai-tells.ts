@@ -55,6 +55,11 @@ export const DEFAULT_SENSITIVITY: SensitivitySettings = {
 export const AI_TELL_SCAN_PROMPT = (
   draftText: string,
   sensitivity: SensitivitySettings = DEFAULT_SENSITIVITY,
+  calibration?: {
+    paragraphStyle?: string | null;
+    listUsage?: string | null;
+    usesEmDash?: boolean | null;
+  },
 ) => `
 Scan this LinkedIn post for AI-generated content tells. Be strict.
 
@@ -80,6 +85,19 @@ ${sensitivity.tellFlagEmDash ? "EM DASH OVERUSE (check for): em dash - used more
 ${sensitivity.tellFlagNumberedLists === "always" ? "NUMBERED LIST (check for): any numbered list in the post body" :
   sensitivity.tellFlagNumberedLists === "three_plus" ? "NUMBERED LIST (check for): numbered list with MORE THAN 3 items" :
   "// NUMBERED LIST: disabled by user settings"}
+
+${calibration
+    ? `CALIBRATED RULES - only flag these if they conflict with this user's voice:
+- Numbered lists: ${calibration.listUsage === "frequent" || calibration.listUsage === "when_appropriate" ? "DO NOT flag numbered lists for this user - they use them naturally." : "Flag numbered lists of 3+ items."}
+- Every sentence on its own line: ${calibration.paragraphStyle === "single_line" ? "DO NOT flag - this is their style." : "Flag if more than 5 consecutive single-sentence paragraphs."}
+- Em dashes: only flag if used more than twice in the post AND user's profile doesn't show em dash usage (${calibration.usesEmDash ? "profile shows em-dash usage" : "profile does not show em-dash usage"}).`
+    : "CALIBRATED RULES: unavailable (uncalibrated user). Use universal checks only."}
+
+UNIVERSAL RULES - always flag regardless of voice:
+- Engagement beg ("drop a comment", "what do you think?", "let me know below")
+- "In conclusion", "To summarise", "It's important to note"
+- "Hot take" or "unpopular opinion" as opener
+- Existing banned words list
 
 Return JSON only, no other text:
 {

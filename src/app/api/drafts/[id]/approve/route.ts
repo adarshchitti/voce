@@ -1,8 +1,42 @@
 import { and, eq } from "drizzle-orm";
+import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
-import { draftQueue, posts, userSettings } from "@/lib/db/schema";
+import { draftMemories, draftQueue, posts, researchItems, userSettings } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth";
 import { calculateScheduledAt } from "@/lib/scheduler";
+
+function inferStructure(text: string): string {
+  if (text.match(/^\d+\./m)) return "numbered_list";
+  if (text.match(/^[-•]/m)) return "bullet_list";
+  if (text.match(/I (remember|was|learned|made|failed)/i)) return "personal_story";
+  if (text.match(/\d+%|\d+ (out of|people|companies)/i)) return "data_point_hook";
+  if (text.match(/\?/)) return "question_hook";
+  return "direct_statement";
+}
+
+function getClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
+  return new Anthropic({ apiKey });
+}
+
+async function generateEditDiffSummary(original: string, edited: string) {
+  const client = getClient();
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 180,
+    messages: [
+      {
+        role: "user",
+        content: `In 1-2 sentences, describe what structurally changed between the original and edited version.
+Focus on structure and tone changes, not content.
+Original: ${original}
+Edited: ${edited}`,
+      },
+    ],
+  });
+  return response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
+}
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,6 +61,34 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       contentSnapshot: draft.editedText ?? draft.draftText,
       status: "scheduled",
       scheduledAt,
+    });
+
+    let editDepthPct = 0;
+    let editDiffSummary: string | null = null;
+    if (draft.editedText && draft.editedText !== draft.draftText) {
+      const originalWords = Math.max(1, draft.draftText.split(/\s+/).filter(Boolean).length);
+      const editedWords = draft.editedText.split(/\s+/).filter(Boolean).length;
+      const changedWords = Math.abs(originalWords - editedWords);
+      editDepthPct = Math.min(100, Math.round((changedWords / originalWords) * 100));
+      if (editDepthPct > 20) {
+        editDiffSummary = await generateEditDiffSummary(draft.draftText, draft.editedText);
+      }
+    }
+
+    const researchItem = draft.researchItemId
+      ? await db.query.researchItems.findFirst({ where: eq(researchItems.id, draft.researchItemId) })
+      : null;
+
+    await db.insert(draftMemories).values({
+      userId: draft.userId,
+      draftId: draft.id,
+      topicCluster: researchItem?.sourceType ?? null,
+      structureUsed: inferStructure(draft.draftText),
+      approved: true,
+      hookFirstLine: draft.draftText.split("\n")[0]?.slice(0, 200) ?? "",
+      wordCount: (draft.editedText ?? draft.draftText).split(/\s+/).filter(Boolean).length,
+      editDiffSummary,
+      editDepthPct,
     });
     return Response.json({ scheduledAt: scheduledAt.toISOString() });
   } catch (error) {

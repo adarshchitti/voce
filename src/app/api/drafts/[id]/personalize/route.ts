@@ -4,7 +4,7 @@ import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/li
 import { requireAuth } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
-import { scoreVoice } from "@/lib/ai/score-voice";
+import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -67,6 +67,14 @@ Rules:
       pov: voiceProfile?.pov,
       toneMarkers: voiceProfile?.toneMarkers,
       formattingStyle: voiceProfile?.formattingStyle,
+      paragraphStyle: voiceProfile?.paragraphStyle,
+      postStructureTemplate: voiceProfile?.postStructureTemplate,
+      signaturePhrases: voiceProfile?.signaturePhrases,
+      generationGuidance: voiceProfile?.generationGuidance,
+      emojiContexts: voiceProfile?.emojiContexts,
+      emojiExamples: voiceProfile?.emojiExamples,
+      emojiNeverOverride: voiceProfile?.emojiNeverOverride,
+      emojiFrequency: (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
       userBannedWords: voiceProfile?.userBannedWords,
       userNotes: voiceProfile?.userNotes,
       extractedPatterns: voiceProfile?.extractedPatterns,
@@ -77,16 +85,24 @@ Rules:
       rejections: recentRejections.map((reason) => ({
         reasonCode: reason.reasonCode,
         freeText: reason.freeText,
+        rejectionType: reason.rejectionType,
       })),
       instruction: personalInstruction,
     });
 
-    const [scanResult, voiceScore] = await Promise.all([
-      scanDraftForAITells(result.draftText),
+    const [scanResult, voiceResult] = await Promise.all([
+      scanDraftForAITells(result.draftText, undefined, voiceProfile?.calibrated ? {
+        paragraphStyle: voiceProfile.paragraphStyle,
+        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
+        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
+      } : undefined),
       voiceProfile?.calibrated && voiceProfile.extractedPatterns
-        ? scoreVoice({ draftText: result.draftText, extractedPatterns: voiceProfile.extractedPatterns })
+        ? scoreVoiceDetailed({ draftText: result.draftText, voiceProfile })
         : Promise.resolve(null),
     ]);
+
+    const voiceScore = voiceResult?.score ?? null;
+    const voiceFlags = voiceResult?.flags ?? [];
 
     await db
       .update(draftQueue)
@@ -95,12 +111,11 @@ Rules:
         hook: result.hook,
         voiceScore,
         editedText: null,
-        aiTellFlags: scanResult.clean
-          ? null
-          : JSON.stringify({
-              words: scanResult.flaggedWords,
-              structure: scanResult.structureIssues,
-            }),
+        aiTellFlags: JSON.stringify({
+          words: scanResult.flaggedWords,
+          structure: scanResult.structureIssues,
+          voice: voiceFlags,
+        }),
       })
       .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
 

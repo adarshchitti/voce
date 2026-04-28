@@ -10,6 +10,7 @@ import {
   json,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 export const researchItems = pgTable("research_items", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -59,6 +60,12 @@ export const rejectionReasons = pgTable("rejection_reasons", {
     .notNull()
     .references(() => draftQueue.id),
   reasonCode: text("reason_code").notNull(),
+  // Valid reason_code values:
+  // Voice: 'wrong_tone' | 'too_formal' | 'too_casual' | 'too_listy' | 'too_long' | 'too_short' | 'sounds_like_ai' | 'wrong_execution'
+  // Research: 'wrong_topic' | 'not_interesting' | 'factually_off'
+  // Other: 'other'
+  rejectionType: text("rejection_type"),
+  // 'voice' | 'research' | 'other'
   freeText: text("free_text"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -113,8 +120,75 @@ export const voiceProfiles = pgTable("voice_profiles", {
   // Raw backup of last LLM extraction — kept for debugging, not used in prompts
   extractedPatterns: json("extracted_patterns"),
   calibrated: boolean("calibrated").notNull().default(false),
+  // Quantitative stylometric columns (Pass 1 extraction output)
+  avgSentenceLengthWords: integer("avg_sentence_length_words"),
+  sentenceLengthRange: text("sentence_length_range"),
+  // e.g. "6-18"
+  avgWordsPerPost: integer("avg_words_per_post"),
+  passiveVoiceRate: text("passive_voice_rate"),
+  // e.g. "~5% of sentences"
+  nominalizationRate: text("nominalization_rate"),
+  // 'low' | 'medium' | 'high'
+  hedgingPhrases: text("hedging_phrases").array(),
+  // actual phrases found e.g. ["I think", "worth noting"]
+  rhetoricalQuestionsRate: numeric("rhetorical_questions_rate", { precision: 3, scale: 2 }),
+  personalAnecdoteRate: numeric("personal_anecdote_rate", { precision: 3, scale: 2 }),
+  dataCitationRate: numeric("data_citation_rate", { precision: 3, scale: 2 }),
+  paragraphStyle: text("paragraph_style"),
+  // 'single_line' | 'two_three_lines' | 'multi_paragraph' | 'mixed'
+  hookExamples: text("hook_examples").array(),
+  // up to 5 real first lines from sample posts
+  neverPatterns: text("never_patterns").array(),
+  // synthesized negative space e.g. ["never uses rhetorical questions", "never ends with a CTA"]
+
+  // Post-level structural template (extracted pattern, not a stat)
+  postStructureTemplate: text("post_structure_template"),
+  // e.g. "Opens with one bold statement. Develops with 2-3 short paragraphs of reasoning. Closes with a direct takeaway, no CTA."
+
+  // Vocabulary fingerprint
+  signaturePhrases: text("signature_phrases").array(),
+  // top recurring 2-3 word n-grams from sample posts
+
+  // Pass 2 synthesis output — injected directly into generation prompts
+  generationGuidance: text("generation_guidance"),
+  // prose block synthesized from all quantitative data
+
+  // Calibration quality (additive — calibrated boolean remains unchanged)
+  calibrationQuality: text("calibration_quality"),
+  // 'uncalibrated' | 'partial' | 'mostly' | 'full'
+  samplePostCount: integer("sample_post_count").default(0),
+  // updated at every extraction run
+
+  // Emoji behavior
+  emojiContexts: text("emoji_contexts").array(),
+  // e.g. ['sentence_starter', 'emphasis', 'closer']
+  emojiExamples: text("emoji_examples").array(),
+  // actual emojis observed e.g. ['→', '⚡']
+  emojiNeverOverride: boolean("emoji_never_override").default(false),
+  // user hard toggle: never use emojis
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const draftMemories = pgTable("draft_memories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // STAGE2: change to uuid to match auth.uid()
+  draftId: uuid("draft_id").references(() => draftQueue.id),
+  topicCluster: text("topic_cluster"),
+  structureUsed: text("structure_used"),
+  // e.g. 'personal_story' | 'data_point_hook' | 'framework' | 'news_reaction'
+  approved: boolean("approved").notNull(),
+  hookFirstLine: text("hook_first_line"),
+  // first line of the draft as generated
+  wordCount: integer("word_count"),
+  editDiffSummary: text("edit_diff_summary"),
+  // Haiku-generated summary of what changed if user edited before approving
+  editDepthPct: integer("edit_depth_pct"),
+  // 0-100, percentage of content that changed
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type DraftMemory = InferSelectModel<typeof draftMemories>;
+export type NewDraftMemory = InferInsertModel<typeof draftMemories>;
 
 export const linkedinTokens = pgTable("linkedin_tokens", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),

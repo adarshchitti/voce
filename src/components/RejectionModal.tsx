@@ -3,12 +3,32 @@
 import { useState } from "react";
 import { useToast } from "./Toast";
 
-const reasons = [
-  { code: "wrong_topic", label: "Wrong topic" },
-  { code: "wrong_tone", label: "Wrong tone" },
-  { code: "not_interesting", label: "Not interesting" },
-  { code: "factually_off", label: "Factually off" },
-  { code: "other", label: "Other" },
+const groupedReasons = [
+  {
+    title: "About the writing",
+    options: [
+      { code: "too_formal", label: "Too formal" },
+      { code: "too_casual", label: "Too casual" },
+      { code: "too_listy", label: "Too listy / structured" },
+      { code: "too_long", label: "Too long" },
+      { code: "too_short", label: "Too short" },
+      { code: "sounds_like_ai", label: "Sounds like AI" },
+      { code: "wrong_execution", label: "Good idea, wrong execution" },
+      { code: "wrong_tone", label: "Wrong tone" },
+    ],
+  },
+  {
+    title: "About the topic/content",
+    options: [
+      { code: "wrong_topic", label: "Wrong topic" },
+      { code: "not_interesting", label: "Not interesting" },
+      { code: "factually_off", label: "Factually off" },
+    ],
+  },
+  {
+    title: "Other",
+    options: [{ code: "other", label: "Other" }],
+  },
 ];
 
 export default function RejectionModal({
@@ -52,19 +72,24 @@ export default function RejectionModal({
         </div>
 
         <div className="space-y-2 p-5">
-          {reasons.map((option) => (
-            <label key={option.code} className="group flex cursor-pointer items-center gap-3">
-              <input
-                type="radio"
-                name="reason"
-                value={option.code}
-                checked={reasonCode === option.code}
-                onChange={() => setReasonCode(option.code)}
-                className="accent-blue-600"
-                disabled={loading}
-              />
-              <span className="text-sm text-slate-700 group-hover:text-slate-900">{option.label}</span>
-            </label>
+          {groupedReasons.map((group) => (
+            <div key={group.title} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.title}</p>
+              {group.options.map((option) => (
+                <label key={option.code} className="group flex cursor-pointer items-center gap-3">
+                  <input
+                    type="radio"
+                    name="reason"
+                    value={option.code}
+                    checked={reasonCode === option.code}
+                    onChange={() => setReasonCode(option.code)}
+                    className="accent-blue-600"
+                    disabled={loading}
+                  />
+                  <span className="text-sm text-slate-700 group-hover:text-slate-900">{option.label}</span>
+                </label>
+              ))}
+            </div>
           ))}
 
           <textarea

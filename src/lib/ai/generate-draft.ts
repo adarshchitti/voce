@@ -15,6 +15,14 @@ export async function generateDraft(input: {
   pov?: string | null;
   toneMarkers?: string[] | null;
   formattingStyle?: string | null;
+  paragraphStyle?: string | null;
+  postStructureTemplate?: string | null;
+  signaturePhrases?: string[] | null;
+  generationGuidance?: string | null;
+  emojiFrequency?: string | null;
+  emojiContexts?: string[] | null;
+  emojiExamples?: string[] | null;
+  emojiNeverOverride?: boolean | null;
   userBannedWords?: string[] | null;
   userNotes?: string | null;
   extractedPatterns?: unknown;
@@ -22,12 +30,15 @@ export async function generateDraft(input: {
   title: string;
   summary: string;
   url: string;
-  rejections: Array<{ reasonCode: string; freeText: string | null }>;
+  rejections: Array<{ reasonCode: string; freeText: string | null; rejectionType?: string | null }>;
   instruction?: string;
 }) {
+  const voiceRejections = input.rejections
+    .filter((r) => r.rejectionType == null || r.rejectionType === "voice")
+    .slice(0, 10);
   const rejectionText =
-    input.rejections.length > 0
-      ? `\n\nRECENT REJECTIONS - do not repeat these patterns:\n${input.rejections
+    voiceRejections.length >= 3
+      ? `\n\nVOICE PATTERNS TO AVOID (from rejected drafts):\n${voiceRejections
           .map((r) => `- ${r.reasonCode}: "${r.freeText ?? ""}"`)
           .join("\n")}`
       : "";
@@ -36,10 +47,10 @@ export async function generateDraft(input: {
     ? `\n\nADDITIONAL INSTRUCTION FROM USER: ${input.instruction}`
     : "";
 
-  const hasStructuredFields =
-    input.sentenceLength || input.hookStyle || input.pov;
+  const hasStructuredFields = input.sentenceLength || input.hookStyle || input.pov;
+  const hasGuidance = Boolean(input.generationGuidance?.trim());
 
-  const voiceSection = hasStructuredFields
+  const legacyVoiceSection = hasStructuredFields
     ? `- Sentence length: ${input.sentenceLength ?? "medium"}
 - Hook style: ${input.hookStyle ?? "bold_claim"}
 - Point of view: ${input.pov ?? "first_person_singular"}
@@ -48,6 +59,33 @@ export async function generateDraft(input: {
 - Additional notes: ${input.userNotes ?? "none"}
 - Never use these words/phrases: ${input.userBannedWords?.join(", ") ?? "none"}`
     : JSON.stringify(input.extractedPatterns);
+  const voiceSection = hasGuidance
+    ? `VOICE PROFILE:
+${input.generationGuidance}
+
+POST STRUCTURE TO FOLLOW:
+${input.postStructureTemplate ?? "Use a clear opening, concise body, and direct close."}
+
+VOCABULARY TO MIRROR (use these naturally, don't force them):
+${input.signaturePhrases?.length ? input.signaturePhrases.join(", ") : "none"}`
+    : `VOICE PROFILE (cold-start fallback):
+${legacyVoiceSection}`;
+  const emojiRuleBlock = `EMOJI RULE:
+${
+  input.emojiNeverOverride
+    ? "Use zero emojis. Not one. Zero. This is a hard rule."
+    : input.emojiFrequency === "none"
+      ? "Use zero emojis."
+      : input.emojiFrequency === "rare"
+        ? `At most one emoji per post, only where it genuinely aids comprehension.
+Prefer these observed emojis: ${(input.emojiExamples ?? []).join(", ") || "none"}`
+        : input.emojiFrequency === "occasional"
+          ? `1-2 emojis maximum. Place them in these contexts: ${(input.emojiContexts ?? []).join(", ") || "none"}.
+Prefer these observed emojis: ${(input.emojiExamples ?? []).join(", ") || "none"}`
+          : `Emojis are acceptable. Mirror the user's observed usage: ${(input.emojiExamples ?? []).join(", ") || "none"}`
+}
+Never use 🔥💡✨🚀🎯💪 unless they appear in the user's observed emoji_examples.
+Never use emojis as bullet-point substitutes.`;
 
   const client = getClient();
   const response = await client.messages.create({
@@ -56,8 +94,16 @@ export async function generateDraft(input: {
     system: `You are a ghostwriter for a LinkedIn content creator. Your sole job is to write posts
 that sound EXACTLY like this specific person - not like generic LinkedIn AI content.
 
-Voice profile:
 ${voiceSection}
+
+${emojiRuleBlock}
+
+Legacy categorical context:
+- Sentence length: ${input.sentenceLength ?? "medium"}
+- Hook style: ${input.hookStyle ?? "bold_claim"}
+- Point of view: ${input.pov ?? "first_person_singular"}
+- Paragraph style: ${input.paragraphStyle ?? "mixed"}
+- Formatting: ${input.formattingStyle ?? "emoji_light"}
 
 Raw voice description from the creator:
 ${input.rawDescription}

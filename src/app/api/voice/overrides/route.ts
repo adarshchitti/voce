@@ -9,6 +9,10 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as {
       userBannedWords?: string[];
       userNotes?: string;
+      signaturePhrases?: string[];
+      neverPatterns?: string[];
+      postStructureTemplate?: string;
+      emojiNeverOverride?: boolean;
     };
 
     await db
@@ -16,6 +20,10 @@ export async function PATCH(request: Request) {
       .set({
         userBannedWords: body.userBannedWords ?? undefined,
         userNotes: body.userNotes ?? undefined,
+        signaturePhrases: body.signaturePhrases ?? undefined,
+        neverPatterns: body.neverPatterns ?? undefined,
+        postStructureTemplate: body.postStructureTemplate ?? undefined,
+        emojiNeverOverride: body.emojiNeverOverride ?? undefined,
         updatedAt: new Date(),
       })
       .where(eq(voiceProfiles.userId, userId)); // STAGE2: replace with supabase auth.uid()

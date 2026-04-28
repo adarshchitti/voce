@@ -19,7 +19,18 @@ export async function PUT(request: Request) {
     const userId = await requireAuth();
     const body = (await request.json()) as { rawDescription?: string; samplePosts?: string[]; personalContext?: string };
     const samplePosts = body.samplePosts ?? [];
-    const patterns = samplePosts.length >= 3 ? await extractVoicePatterns(samplePosts) : null;
+    const existing = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
+    const patterns =
+      samplePosts.length >= 3
+        ? await extractVoicePatterns(samplePosts, {
+            userNotes: existing?.userNotes ?? "",
+            userBannedWords: existing?.userBannedWords ?? [],
+            toneMarkers: existing?.toneMarkers ?? [],
+          })
+        : null;
+    const samplePostCount = samplePosts.length;
+    const calibrationQuality =
+      samplePostCount <= 2 ? "uncalibrated" : samplePostCount <= 5 ? "partial" : samplePostCount <= 7 ? "mostly" : "full";
 
     await db
       .insert(voiceProfiles)
@@ -31,11 +42,30 @@ export async function PUT(request: Request) {
         sentenceLength: patterns?.sentenceLength ?? null,
         hookStyle: patterns?.hookStyle ?? null,
         pov: patterns?.pov ?? null,
-        toneMarkers: patterns?.toneMarkers ?? [],
+        toneMarkers: existing?.toneMarkers ?? [],
         topicsObserved: patterns?.topicsObserved ?? [],
         formattingStyle: patterns?.formattingStyle ?? null,
+        avgSentenceLengthWords: patterns?.avgSentenceLengthWords ?? null,
+        sentenceLengthRange: patterns?.sentenceLengthRange ?? null,
+        avgWordsPerPost: patterns?.avgWordsPerPost ?? null,
+        passiveVoiceRate: patterns?.passiveVoiceRate ?? null,
+        nominalizationRate: patterns?.nominalizationRate ?? null,
+        hedgingPhrases: patterns?.hedgingPhrases ?? null,
+        rhetoricalQuestionsRate: patterns?.rhetoricalQuestionsRate ?? null,
+        personalAnecdoteRate: patterns?.personalAnecdoteRate ?? null,
+        dataCitationRate: patterns?.dataCitationRate ?? null,
+        paragraphStyle: patterns?.paragraphStyle ?? null,
+        hookExamples: patterns?.hookExamples ?? null,
+        neverPatterns: patterns?.neverPatterns ?? null,
+        postStructureTemplate: patterns?.postStructureTemplate ?? null,
+        signaturePhrases: patterns?.signaturePhrases ?? null,
+        generationGuidance: patterns?.generationGuidance ?? null,
+        samplePostCount,
+        calibrationQuality,
+        emojiContexts: patterns?.emojiContexts ?? null,
+        emojiExamples: patterns?.emojiExamples ?? null,
         extractedPatterns: patterns,
-        calibrated: samplePosts.length >= 3,
+        calibrated: samplePostCount >= 3,
       })
       .onConflictDoUpdate({
         target: voiceProfiles.userId,
@@ -46,11 +76,30 @@ export async function PUT(request: Request) {
           sentenceLength: patterns?.sentenceLength ?? null,
           hookStyle: patterns?.hookStyle ?? null,
           pov: patterns?.pov ?? null,
-          toneMarkers: patterns?.toneMarkers ?? [],
+          toneMarkers: existing?.toneMarkers ?? [],
           topicsObserved: patterns?.topicsObserved ?? [],
           formattingStyle: patterns?.formattingStyle ?? null,
+          avgSentenceLengthWords: patterns?.avgSentenceLengthWords ?? null,
+          sentenceLengthRange: patterns?.sentenceLengthRange ?? null,
+          avgWordsPerPost: patterns?.avgWordsPerPost ?? null,
+          passiveVoiceRate: patterns?.passiveVoiceRate ?? null,
+          nominalizationRate: patterns?.nominalizationRate ?? null,
+          hedgingPhrases: patterns?.hedgingPhrases ?? null,
+          rhetoricalQuestionsRate: patterns?.rhetoricalQuestionsRate ?? null,
+          personalAnecdoteRate: patterns?.personalAnecdoteRate ?? null,
+          dataCitationRate: patterns?.dataCitationRate ?? null,
+          paragraphStyle: patterns?.paragraphStyle ?? null,
+          hookExamples: patterns?.hookExamples ?? null,
+          neverPatterns: patterns?.neverPatterns ?? null,
+          postStructureTemplate: patterns?.postStructureTemplate ?? null,
+          signaturePhrases: patterns?.signaturePhrases ?? null,
+          generationGuidance: patterns?.generationGuidance ?? null,
+          samplePostCount,
+          calibrationQuality,
+          emojiContexts: patterns?.emojiContexts ?? null,
+          emojiExamples: patterns?.emojiExamples ?? null,
           extractedPatterns: patterns,
-          calibrated: samplePosts.length >= 3,
+          calibrated: samplePostCount >= 3,
           updatedAt: new Date(),
         },
       });

@@ -47,6 +47,14 @@ export default function SettingsPage() {
   const [pov, setPov] = useState<string | null>(null);
   const [toneMarkers, setToneMarkers] = useState<string[]>([]);
   const [formattingStyle, setFormattingStyle] = useState<string | null>(null);
+  const [calibrationQuality, setCalibrationQuality] = useState<string>("uncalibrated");
+  const [samplePostCount, setSamplePostCount] = useState(0);
+  const [signaturePhrases, setSignaturePhrases] = useState<string[]>([]);
+  const [neverPatterns, setNeverPatterns] = useState<string[]>([]);
+  const [postStructureTemplate, setPostStructureTemplate] = useState("");
+  const [emojiNeverOverride, setEmojiNeverOverride] = useState(false);
+  const [newSignaturePhrase, setNewSignaturePhrase] = useState("");
+  const [newNeverPattern, setNewNeverPattern] = useState("");
   const [userBannedWordsText, setUserBannedWordsText] = useState("");
   const [userNotes, setUserNotes] = useState("");
   const [linkedinToken, setLinkedinToken] = useState<LinkedInTokenView | null>(null);
@@ -78,6 +86,12 @@ export default function SettingsPage() {
       setPov(d.voiceProfile?.pov ?? null);
       setToneMarkers(d.voiceProfile?.toneMarkers ?? []);
       setFormattingStyle(d.voiceProfile?.formattingStyle ?? null);
+      setCalibrationQuality(d.voiceProfile?.calibrationQuality ?? "uncalibrated");
+      setSamplePostCount(d.voiceProfile?.samplePostCount ?? 0);
+      setSignaturePhrases(d.voiceProfile?.signaturePhrases ?? []);
+      setNeverPatterns(d.voiceProfile?.neverPatterns ?? []);
+      setPostStructureTemplate(d.voiceProfile?.postStructureTemplate ?? "");
+      setEmojiNeverOverride(d.voiceProfile?.emojiNeverOverride ?? false);
       setUserBannedWordsText((d.voiceProfile?.userBannedWords ?? []).join(", "));
       setUserNotes(d.voiceProfile?.userNotes ?? "");
       setPersonalContext(d.voiceProfile?.personalContext ?? "");
@@ -205,6 +219,22 @@ export default function SettingsPage() {
     showToast(response.ok ? "Preferences saved" : "Failed to save", response.ok ? "success" : "error");
   }
 
+  async function patchVoiceOverrides(payload: {
+    signaturePhrases?: string[];
+    neverPatterns?: string[];
+    postStructureTemplate?: string;
+    emojiNeverOverride?: boolean;
+  }) {
+    const response = await fetch("/api/voice/overrides", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      showToast("Failed to save", "error");
+    }
+  }
+
   const toggleTellFlag = (key: keyof typeof tellFlags) => {
     setTellFlags((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -229,7 +259,7 @@ export default function SettingsPage() {
     }
   }
 
-  const sampleCount = samplePostsText
+  const sampleCount = samplePostCount || samplePostsText
     .split("---")
     .map((p) => p.trim())
     .filter(Boolean).length;
@@ -238,6 +268,15 @@ export default function SettingsPage() {
     sentenceLength && hookStyle && pov && formattingStyle
       ? { sentenceLength, hookStyle, pov, formattingStyle, toneMarkers }
       : null;
+
+  const calibrationUi =
+    calibrationQuality === "full"
+      ? { label: "FULL ✓", className: "bg-green-100 text-green-700", nudge: "Voice fully calibrated. Add posts anytime to keep it current." }
+      : calibrationQuality === "mostly"
+        ? { label: "MOSTLY ◐", className: "bg-amber-100 text-amber-700", nudge: "Almost there - add 1-2 more posts to reach full calibration." }
+        : calibrationQuality === "partial"
+          ? { label: "PARTIAL ◑", className: "bg-amber-100 text-amber-700", nudge: "Add more posts for better accuracy. 8+ posts recommended." }
+          : { label: "UNCALIBRATED ○", className: "bg-red-100 text-red-700", nudge: "Add at least 3 posts to start calibrating your voice." };
 
   return (
     <div className="space-y-5">
@@ -315,12 +354,12 @@ export default function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection title="Voice Profile" description="Help the AI write in your style">
-        <div className="mb-4">
-          {isCalibrated ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700">✓ Calibrated ({sampleCount} posts)</span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">⚠ Add 3+ posts to calibrate</span>
-          )}
+        <div className="mb-4 space-y-2">
+          <p className="text-sm text-slate-700">
+            Voice calibration: <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${calibrationUi.className}`}>{calibrationUi.label}</span>
+          </p>
+          <p className="text-xs text-slate-500">{sampleCount} sample posts added · <span className="text-blue-600">Add more posts ↗</span></p>
+          <p className="text-xs text-slate-500">{calibrationUi.nudge}</p>
         </div>
 
         {isCalibrated && extractedPatterns ? (
@@ -373,6 +412,110 @@ export default function SettingsPage() {
           <button onClick={saveVoice} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-green-700">
             Save voice
           </button>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Your signature phrases (from your posts)</label>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {signaturePhrases.map((phrase) => (
+                <button
+                  key={phrase}
+                  onClick={async () => {
+                    const next = signaturePhrases.filter((p) => p !== phrase);
+                    setSignaturePhrases(next);
+                    await patchVoiceOverrides({ signaturePhrases: next });
+                  }}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+                >
+                  {phrase} ×
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newSignaturePhrase}
+                onChange={(e) => setNewSignaturePhrase(e.target.value)}
+                placeholder="Add phrase"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                onClick={async () => {
+                  const phrase = newSignaturePhrase.trim();
+                  if (!phrase) return;
+                  const next = [...signaturePhrases, phrase];
+                  setSignaturePhrases(next);
+                  setNewSignaturePhrase("");
+                  await patchVoiceOverrides({ signaturePhrases: next });
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              >
+                + Add phrase
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Patterns this writer avoids - edit if wrong</label>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {neverPatterns.map((pattern) => (
+                <button
+                  key={pattern}
+                  onClick={async () => {
+                    const next = neverPatterns.filter((p) => p !== pattern);
+                    setNeverPatterns(next);
+                    await patchVoiceOverrides({ neverPatterns: next });
+                  }}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
+                >
+                  {pattern} ×
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newNeverPattern}
+                onChange={(e) => setNewNeverPattern(e.target.value)}
+                placeholder="Add pattern"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+              <button
+                onClick={async () => {
+                  const pattern = newNeverPattern.trim();
+                  if (!pattern) return;
+                  const next = [...neverPatterns, pattern];
+                  setNeverPatterns(next);
+                  setNewNeverPattern("");
+                  await patchVoiceOverrides({ neverPatterns: next });
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              >
+                + Add pattern
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Typical post structure (extracted - edit to correct)</label>
+            <textarea
+              value={postStructureTemplate}
+              onChange={(e) => setPostStructureTemplate(e.target.value)}
+              onBlur={() => patchVoiceOverrides({ postStructureTemplate })}
+              rows={3}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={emojiNeverOverride}
+              onChange={async (e) => {
+                const next = e.target.checked;
+                setEmojiNeverOverride(next);
+                await patchVoiceOverrides({ emojiNeverOverride: next });
+              }}
+            />
+            Never use emojis in generated posts
+          </label>
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Words/phrases to never use</label>

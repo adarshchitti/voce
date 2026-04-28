@@ -192,12 +192,12 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   const aiFlags = (() => {
     if (!currentDraft.aiTellFlags) return null;
     try {
-      return JSON.parse(currentDraft.aiTellFlags) as { words: string[]; structure: string[] };
+      return JSON.parse(currentDraft.aiTellFlags) as { words: string[]; structure: string[]; voice?: string[] };
     } catch {
       return null;
     }
   })();
-  const hasFlags = !!aiFlags && (aiFlags.words.length > 0 || aiFlags.structure.length > 0);
+  const hasFlags = !!aiFlags && (aiFlags.words.length > 0 || aiFlags.structure.length > 0 || (aiFlags.voice?.length ?? 0) > 0);
 
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -235,6 +235,7 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
           <p className="mb-0.5 text-xs font-medium text-amber-800">AI tell detected — review before approving</p>
           {aiFlags?.words.length ? <p className="text-xs text-amber-700">Words: {aiFlags.words.join(", ")}</p> : null}
           {aiFlags?.structure.length ? <p className="text-xs text-amber-700">Structure: {aiFlags.structure.join("; ")}</p> : null}
+          {aiFlags?.voice?.length ? <p className="text-xs text-amber-700">Voice: {aiFlags.voice.join("; ")}</p> : null}
         </div>
       ) : null}
 

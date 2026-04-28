@@ -20,6 +20,11 @@ export interface ScanResult {
 export async function scanDraftForAITells(
   draftText: string,
   sensitivity: SensitivitySettings = DEFAULT_SENSITIVITY,
+  calibration?: {
+    paragraphStyle?: string | null;
+    listUsage?: string | null;
+    usesEmDash?: boolean | null;
+  },
 ): Promise<ScanResult> {
   const client = getClient();
 
@@ -31,7 +36,7 @@ export async function scanDraftForAITells(
       messages: [
         {
           role: "user",
-          content: AI_TELL_SCAN_PROMPT(draftText, sensitivity),
+          content: AI_TELL_SCAN_PROMPT(draftText, sensitivity, calibration),
         },
       ],
     });
