@@ -161,6 +161,93 @@ export default function SettingsPage() {
     setTopics((prev) => prev.map((topic, i) => (i === index ? { ...topic, [field]: value } : topic)));
   };
 
+  async function patchTopicById(topicId: string, payload: Partial<Pick<TopicRow, "topicLabel" | "tavilyQuery" | "sourceUrls" | "priorityWeight">>) {
+    // Topic updates route path: /api/topics?id=<topicId>
+    const response = await fetch(`/api/topics?id=${encodeURIComponent(topicId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    console.log("PATCH /api/topics response", { ok: response.ok, status: response.status, data });
+    return { response, data };
+  }
+
+  async function saveTopicRow(index: number): Promise<boolean> {
+    const topic = topics[index];
+    if (!topic) return false;
+
+    const payload = {
+      topicLabel: topic.topicLabel.trim(),
+      tavilyQuery: topic.tavilyQuery.trim(),
+      sourceUrls: topic.sourceUrls.map((url) => url.trim()).filter(Boolean),
+      priorityWeight: topic.priorityWeight ?? 3,
+    };
+
+    if (!payload.topicLabel || !payload.tavilyQuery) {
+      showToast("Topic name and query are required", "error");
+      return false;
+    }
+
+    if (topic.id) {
+      const { response, data } = await patchTopicById(topic.id, payload);
+      if (!response.ok) {
+        showToast("Failed to save topic", "error");
+        console.log("Topic save error payload", data);
+        return false;
+      }
+      setTopics((prev) =>
+        prev.map((row, i) =>
+          i === index
+            ? {
+                ...row,
+                ...(data.topic ?? {}),
+                topicLabel: data.topic?.topicLabel ?? payload.topicLabel,
+                tavilyQuery: data.topic?.tavilyQuery ?? payload.tavilyQuery,
+                sourceUrls: data.topic?.sourceUrls ?? payload.sourceUrls,
+                priorityWeight: data.topic?.priorityWeight ?? payload.priorityWeight,
+                lastSavedTopicLabel: data.topic?.topicLabel ?? payload.topicLabel,
+              }
+            : row,
+        ),
+      );
+      showToast("Topic saved");
+      return true;
+    }
+
+    const createResponse = await fetch("/api/topics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topicLabel: payload.topicLabel,
+        tavilyQuery: payload.tavilyQuery,
+        sourceUrls: payload.sourceUrls,
+        priorityWeight: payload.priorityWeight,
+        tavilyQueryConfirmed: true,
+      }),
+    });
+    const createData = await createResponse.json().catch(() => ({}));
+    if (!createResponse.ok) {
+      showToast("Failed to save topic", "error");
+      console.log("POST /api/topics response", { ok: createResponse.ok, status: createResponse.status, data: createData });
+      return false;
+    }
+    setTopics((prev) =>
+      prev.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              id: createData.topic?.id ?? row.id,
+              lastSavedTopicLabel: createData.topic?.topicLabel ?? payload.topicLabel,
+              priorityWeight: createData.topic?.priorityWeight ?? payload.priorityWeight,
+            }
+          : row,
+      ),
+    );
+    showToast("Topic saved");
+    return true;
+  }
+
   async function suggestTopicQuery(index: number) {
     const topic = topics[index];
     if (!topic?.topicLabel.trim()) return;
@@ -188,58 +275,18 @@ export default function SettingsPage() {
   }
 
   async function saveTopics() {
-    const validTopics = topics
-      .map((topic) => ({
-        ...topic,
-        topicLabel: topic.topicLabel.trim(),
-        tavilyQuery: topic.tavilyQuery.trim(),
-        sourceUrls: topic.sourceUrls.map((url) => url.trim()).filter(Boolean),
-        priorityWeight: topic.priorityWeight ?? 3,
-      }))
-      .filter((topic) => topic.topicLabel && topic.tavilyQuery);
-
-    const existingTopicIds = topics.map((topic) => topic.id).filter(Boolean) as string[];
-
-    const deleteRequests = existingTopicIds.map((id) =>
-      fetch(`/api/topics?id=${encodeURIComponent(id)}`, { method: "DELETE" }),
-    );
-    const createRequests = validTopics.map((topic) =>
-      fetch("/api/topics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topicLabel: topic.topicLabel,
-          tavilyQuery: topic.tavilyQuery,
-          sourceUrls: topic.sourceUrls,
-          priorityWeight: topic.priorityWeight,
-          tavilyQueryConfirmed: true,
-        }),
-      }),
-    );
-
-    const responses = await Promise.all([...deleteRequests, ...createRequests]);
-    const allSucceeded = responses.every((response) => response.ok);
-
-    if (allSucceeded) {
+    const operations = topics.map(async (topic, index) => {
+      const trimmedLabel = topic.topicLabel.trim();
+      const trimmedQuery = topic.tavilyQuery.trim();
+      if (!trimmedLabel || !trimmedQuery) return true;
+      return saveTopicRow(index);
+    });
+    const results = await Promise.all(operations);
+    if (results.every(Boolean)) {
       showToast("Topics saved");
-      const refreshed = await fetch("/api/topics").then((r) => r.json());
-      const latestTopics = (refreshed.topics ?? []) as TopicRow[];
-      setTopics(
-        latestTopics.length > 0
-          ? latestTopics.map((topic) => ({
-              id: topic.id,
-              topicLabel: topic.topicLabel ?? "",
-              tavilyQuery: topic.tavilyQuery ?? "",
-              sourceUrls: topic.sourceUrls ?? [],
-              priorityWeight: topic.priorityWeight ?? 3,
-              lastSavedTopicLabel: topic.topicLabel ?? "",
-              querySuggested: false,
-            }))
-          : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false }],
-      );
-      return;
+    } else {
+      showToast("Failed to save", "error");
     }
-    showToast("Failed to save", "error");
   }
 
   async function saveOverrides() {
@@ -624,7 +671,15 @@ export default function SettingsPage() {
                       <button
                         key={weight}
                         type="button"
-                        onClick={() => updateTopic(i, "priorityWeight", weight)}
+                        onClick={async () => {
+                          updateTopic(i, "priorityWeight", weight);
+                          const topicId = topics[i]?.id;
+                          if (!topicId) return;
+                          const { response } = await patchTopicById(topicId, { priorityWeight: weight });
+                          if (!response.ok) {
+                            showToast("Failed to update priority", "error");
+                          }
+                        }}
                         className={`h-7 w-7 rounded-sm border text-xs transition-colors ${
                           (topic.priorityWeight ?? 3) === weight
                             ? "bg-primary text-primary-foreground"
@@ -695,6 +750,14 @@ export default function SettingsPage() {
                     className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => saveTopicRow(i)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
+                  Save topic
+                </button>
               </div>
             </div>
           ))}

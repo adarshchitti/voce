@@ -16,12 +16,59 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const userId = await requireAuth();
-    const body = (await request.json()) as { topicLabel?: string; tavilyQuery?: string; sourceUrls?: string[] };
+    const body = (await request.json()) as {
+      topicLabel?: string;
+      tavilyQuery?: string;
+      sourceUrls?: string[];
+      priorityWeight?: number;
+    };
     if (!body.topicLabel || !body.tavilyQuery) return Response.json({ error: "topicLabel and tavilyQuery are required" }, { status: 400 });
-    const [topic] = await db.insert(topicSubscriptions).values({ userId, topicLabel: body.topicLabel, tavilyQuery: body.tavilyQuery, sourceUrls: body.sourceUrls ?? [], active: true }).returning();
+    const [topic] = await db
+      .insert(topicSubscriptions)
+      .values({
+        userId,
+        topicLabel: body.topicLabel,
+        tavilyQuery: body.tavilyQuery,
+        sourceUrls: body.sourceUrls ?? [],
+        priorityWeight: body.priorityWeight ?? 3,
+        active: true,
+      })
+      .returning();
     return Response.json({ topic });
   } catch {
     return Response.json({ error: "Failed to create topic" }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const userId = await requireAuth();
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+
+    const body = (await request.json()) as {
+      topicLabel?: string;
+      tavilyQuery?: string;
+      sourceUrls?: string[];
+      priorityWeight?: number;
+    };
+
+    const updateValues: Partial<typeof topicSubscriptions.$inferInsert> = {};
+    if (body.topicLabel !== undefined) updateValues.topicLabel = body.topicLabel;
+    if (body.tavilyQuery !== undefined) updateValues.tavilyQuery = body.tavilyQuery;
+    if (body.sourceUrls !== undefined) updateValues.sourceUrls = body.sourceUrls;
+    if (body.priorityWeight !== undefined) updateValues.priorityWeight = body.priorityWeight;
+
+    const [topic] = await db
+      .update(topicSubscriptions)
+      .set(updateValues)
+      .where(and(eq(topicSubscriptions.id, id), eq(topicSubscriptions.userId, userId)))
+      .returning();
+
+    if (!topic) return Response.json({ error: "Topic not found" }, { status: 404 });
+    return Response.json({ topic });
+  } catch {
+    return Response.json({ error: "Failed to update topic" }, { status: 400 });
   }
 }
 
