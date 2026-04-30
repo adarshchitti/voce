@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/Toast";
@@ -26,7 +25,7 @@ import { useToast } from "@/components/Toast";
 type LinkedInStatus = "active" | "expired" | "not_connected";
 
 function sectionLabel(label: string) {
-  return <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>;
+  return <p className="mb-1 mt-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">{label}</p>;
 }
 
 function isRouteActive(pathname: string, href: string) {
@@ -89,119 +88,83 @@ export default function Sidebar({ mobileOnly = false }: { mobileOnly?: boolean }
     }
   }
 
+  const navItemClass = (active: boolean) =>
+    cn(
+      "h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-normal text-[#374151] hover:bg-[#F3F4F6] hover:text-[#111827]",
+      active && "bg-[#EFF6FF] font-medium text-[#2563EB] hover:bg-[#EFF6FF] hover:text-[#2563EB]"
+    );
+
   const desktop = (
-    <div className="flex h-full flex-col px-2 py-3">
-      <Link href="/inbox" className="mb-3 flex items-center gap-2 px-3 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md border bg-background text-xs font-semibold">V</div>
-        <span className="text-sm font-semibold">Voce</span>
-      </Link>
-      <Separator className="mb-2" />
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-60 flex-col border-r border-[#E5E7EB] bg-white md:flex">
+      <div className="flex h-14 items-center border-b border-[#E5E7EB] px-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand text-sm font-bold text-white">V</div>
+          <span className="text-[15px] font-semibold text-[#111827]">Voce</span>
+        </div>
+      </div>
 
-      {sectionLabel("Create")}
-      <Button
-        variant="ghost"
-        className="h-9 w-full justify-start gap-2 px-3 font-normal"
-        onClick={handleNewDraft}
-        disabled={newDraftLoading}
-      >
-        {newDraftLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
-        New Draft
-      </Button>
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/projects") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/projects")}
-      >
-        <Plus className="h-4 w-4" />
-        New Project
-      </Button>
+      <nav className="flex-1 overflow-y-auto px-2 py-3">
+        {sectionLabel("Create")}
+        <Button variant="ghost" className={navItemClass(false)} onClick={handleNewDraft} disabled={newDraftLoading}>
+          {newDraftLoading ? <Loader2 className="h-[15px] w-[15px] animate-spin" /> : <PenLine className="h-[15px] w-[15px] text-[#6B7280]" />}
+          New Draft
+        </Button>
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/projects"))} onClick={() => router.push("/projects")}>
+          <Plus className="h-[15px] w-[15px] text-[#6B7280]" />
+          New Project
+        </Button>
 
-      <Separator className="my-2" />
-      {sectionLabel("Workspace")}
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/inbox") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/inbox")}
-      >
-        <Inbox className="h-4 w-4" />
-        Inbox
-        {pendingCount > 0 ? <Badge className="ml-auto h-5 px-1.5 text-xs">{pendingCount}</Badge> : null}
-      </Button>
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/projects") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/projects")}
-      >
-        <FolderKanban className="h-4 w-4" />
-        Projects
-      </Button>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <Button
-              variant="ghost"
-              className="h-9 w-full cursor-not-allowed justify-start gap-2 px-3 font-normal opacity-50"
-              disabled
-            >
-              <Calendar className="h-4 w-4" />
-              Calendar
-              <span className="ml-auto text-xs text-muted-foreground">soon</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Coming in a future update</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+        {sectionLabel("Workspace")}
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/inbox"))} onClick={() => router.push("/inbox")}>
+          <Inbox className="h-[15px] w-[15px] text-[#6B7280]" />
+          Inbox
+          {pendingCount > 0 ? <Badge className="ml-auto h-4 px-1.5 text-[11px]">{pendingCount}</Badge> : null}
+        </Button>
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/projects"))} onClick={() => router.push("/projects")}>
+          <FolderKanban className="h-[15px] w-[15px] text-[#6B7280]" />
+          Projects
+        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger>
+              <Button variant="ghost" className="h-auto w-full cursor-not-allowed justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-normal text-[#6B7280] opacity-60" disabled>
+                <Calendar className="h-[15px] w-[15px] text-[#6B7280]" />
+                Calendar
+                <span className="ml-auto text-[11px] text-[#9CA3AF]">soon</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Coming in a future update</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
-      <Separator className="my-2" />
-      {sectionLabel("History")}
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/history") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/history")}
-      >
-        <CheckCircle className="h-4 w-4" />
-        Published
-      </Button>
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/archive") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/archive")}
-      >
-        <Archive className="h-4 w-4" />
-        Archive
-      </Button>
+        {sectionLabel("History")}
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/history"))} onClick={() => router.push("/history")}>
+          <CheckCircle className="h-[15px] w-[15px] text-[#6B7280]" />
+          Published
+        </Button>
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/archive"))} onClick={() => router.push("/archive")}>
+          <Archive className="h-[15px] w-[15px] text-[#6B7280]" />
+          Archive
+        </Button>
 
-      <Separator className="my-2" />
-      {sectionLabel("Insights")}
-      <Button
-        variant="ghost"
-        className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/insights") && "bg-accent text-accent-foreground")}
-        onClick={() => router.push("/insights")}
-      >
-        <BarChart2 className="h-4 w-4" />
-        Analytics
-      </Button>
+        {sectionLabel("Insights")}
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/insights"))} onClick={() => router.push("/insights")}>
+          <BarChart2 className="h-[15px] w-[15px] text-[#6B7280]" />
+          Analytics
+        </Button>
+      </nav>
 
-      <div className="mt-auto">
-        <Separator className="my-2" />
-        <Button
-          variant="ghost"
-          className={cn("h-9 w-full justify-start gap-2 px-3 font-normal", isRouteActive(pathname, "/settings") && "bg-accent text-accent-foreground")}
-          onClick={() => router.push("/settings")}
-        >
-          <Settings className="h-4 w-4" />
+      <div className="space-y-0.5 border-t border-[#E5E7EB] p-3">
+        <Button variant="ghost" className={navItemClass(isRouteActive(pathname, "/settings"))} onClick={() => router.push("/settings")}>
+          <Settings className="h-[15px] w-[15px] text-[#6B7280]" />
           Settings
         </Button>
-        <button
-          type="button"
-          onClick={() => router.push("/settings")}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
-        >
+        <Button variant="ghost" className="h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[12px] font-normal text-[#6B7280] hover:bg-[#F3F4F6]" onClick={() => router.push("/settings")}>
           <span className={cn("h-2 w-2 rounded-full", linkedinFooter.dot)} />
-          <span className="text-xs text-muted-foreground">{linkedinFooter.label}</span>
-        </button>
+          {linkedinFooter.label}
+        </Button>
       </div>
-    </div>
+    </aside>
   );
 
   if (mobileOnly) {

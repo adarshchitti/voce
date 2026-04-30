@@ -11,11 +11,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   if (isAuthPage) return <>{children}</>;
 
   return (
-    <div className="flex h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-background md:flex">
+    <div className="flex min-h-screen bg-[#F7F7F7]">
+      <div className="hidden md:block">
         <Sidebar />
-      </aside>
-      <main className="flex-1 overflow-y-auto pb-20 md:pb-0">{children}</main>
+      </div>
+      <main className="min-h-screen flex-1 overflow-y-auto bg-[#F7F7F7] pb-20 md:pb-0 md:pl-60">
+        <div className="mx-auto max-w-6xl px-6 py-6">{children}</div>
+      </main>
       <Sidebar mobileOnly />
     </div>
   );

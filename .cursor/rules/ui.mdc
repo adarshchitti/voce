@@ -102,3 +102,21 @@ Never modify files in src/app/api/cron/. These are protected.
 ## Auth pattern
 Use the existing requireAuth() or middleware pattern. Never hardcode userId.
 Tag any userId usage with // STAGE2: replace with auth.uid() if it uses 'owner'.
+
+## Exact token values (use these, not approximations)
+- Page background: #F7F7F7
+- Card background: #FFFFFF
+- Border: #E5E7EB
+- Text primary: #111827
+- Text secondary: #6B7280
+- Text muted: #9CA3AF
+- Brand: #2563EB
+- Brand light bg: #EFF6FF
+- Shadow card: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07)
+- Nav item height: py-1.5 (not h-9)
+- Nav icon size: h-[15px] w-[15px]
+- Nav text size: text-[13.5px]
+- Page title: text-[22px] font-semibold
+- Card title: text-[15px] font-semibold
+- Body text: text-[13.5px]
+- Small/meta text: text-[12px] or text-[11px]
