@@ -1,0 +1,104 @@
+---
+description: UI design system and component patterns for Voce
+globs: ["src/app/**/*.tsx", "src/components/**/*.tsx"]
+---
+
+# Voce UI Design System
+
+## Design reference: Notion
+- White or very light grey backgrounds (#FAFAFA for page bg, white for cards)
+- Borders: 1px solid hsl(var(--border)) — subtle, never heavy
+- Generous whitespace — padding-4 minimum on cards, padding-6 on page sections
+- Typography hierarchy through weight: font-semibold for titles, font-normal for body
+- Muted text: text-muted-foreground for secondary content
+- No gradients, no heavy shadows (shadow-sm maximum on cards)
+- Hover states: bg-accent (light grey fill) only — never colour changes on hover
+
+## Component library: shadcn/ui
+Always use shadcn/ui primitives. Never write raw HTML form elements.
+Import from @/components/ui/[component].
+Before writing a custom component, check if a shadcn equivalent exists.
+
+## Buttons
+- Primary actions: <Button> (default variant)
+- Secondary / outline actions: <Button variant="outline">
+- Destructive: <Button variant="destructive">
+- Ghost / nav items: <Button variant="ghost">
+- Never use raw <button> tags in UI components
+
+## Cards
+Consistent card pattern for all content cards:
+<div className="rounded-lg border bg-card p-4 shadow-sm">
+
+## Badges and status pills
+Use <Badge> from shadcn for all status indicators.
+- Active / success: green override className="bg-green-100 text-green-800 border-green-200"
+- Warning / paused: amber className="bg-amber-100 text-amber-800 border-amber-200"
+- Neutral / muted: <Badge variant="secondary">
+
+## Loading states
+Always show a loading state on every async action.
+Disable the triggering button during loading.
+Use <Loader2 className="h-4 w-4 animate-spin" /> from lucide-react.
+Never leave a button in a state where double-submit is possible.
+
+## Toasts
+Use the existing toast system in this codebase — do not introduce a new one.
+- Success: default/green variant
+- Error: destructive variant
+- Always fire a toast on async action completion (success or failure)
+
+## Forms
+- Labels always above inputs
+- Placeholder text shows examples, never instructions ("e.g. AI agents" not "Enter your topic")
+- Required fields marked with *
+- Error messages shown below the field in text-destructive text-sm
+- Never use raw <input> or <textarea> — use shadcn Input and Textarea
+
+## Empty states
+Every list or data view must have an empty state.
+Pattern: centred container, muted icon (h-12 w-12), font-semibold title,
+text-muted-foreground description, optional CTA Button.
+Never show a blank white page.
+
+## Mobile
+- Sidebar collapses to bottom tab bar on < 768px
+- Grid layouts: 3col desktop → 2col tablet → 1col mobile
+- Touch targets minimum h-9 (36px) for all interactive elements
+- Test truncation on long strings — use truncate or line-clamp-N
+
+## Sidebar nav items
+Pattern for all sidebar nav items:
+<Button
+  variant="ghost"
+  className={cn(
+    "w-full justify-start gap-2 h-9 px-3 font-normal",
+    isActive && "bg-accent text-accent-foreground font-medium"
+  )}
+>
+  <Icon className="h-4 w-4" />
+  Label
+</Button>
+Active state: check usePathname() — active if pathname === href or pathname.startsWith(href).
+
+## Icons
+Use lucide-react exclusively. Never use emoji as icons in UI components.
+Consistent sizes: h-4 w-4 for inline/nav icons, h-5 w-5 for card icons,
+h-8 w-8 or h-12 w-12 for empty state illustrations.
+
+## Page headers
+Consistent page header pattern:
+<div className="flex items-center justify-between mb-6">
+  <div>
+    <h1 className="text-2xl font-semibold">Page Title</h1>
+    <p className="text-sm text-muted-foreground mt-1">Subtitle</p>
+  </div>
+  <div>{/* action buttons */}</div>
+</div>
+
+## Cron handlers — never touch
+Never modify files in src/app/api/cron/. These are protected.
+
+## Auth pattern
+Use the existing requireAuth() or middleware pattern. Never hardcode userId.
+Tag any userId usage with // STAGE2: replace with auth.uid() if it uses 'owner'.

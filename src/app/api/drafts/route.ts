@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { draftQueue, researchItems } from "@/lib/db/schema";
+import { contentSeries, draftQueue, researchItems } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth";
 
 export async function GET(request: Request) {
@@ -23,6 +23,10 @@ export async function GET(request: Request) {
         staleAfter: draftQueue.staleAfter,
         generatedAt: draftQueue.generatedAt,
         editedText: draftQueue.editedText,
+        seriesId: draftQueue.seriesId,
+        seriesPosition: draftQueue.seriesPosition,
+        seriesContext: draftQueue.seriesContext,
+        seriesTitle: contentSeries.title,
         researchTitle: researchItems.title,
         researchUrl: researchItems.url,
         researchSummary: researchItems.summary,
@@ -31,6 +35,7 @@ export async function GET(request: Request) {
       })
       .from(draftQueue)
       .leftJoin(researchItems, eq(draftQueue.researchItemId, researchItems.id))
+      .leftJoin(contentSeries, eq(draftQueue.seriesId, contentSeries.id))
       .where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, status)))
       .orderBy(desc(draftQueue.generatedAt))
       .limit(limit);
@@ -48,6 +53,10 @@ export async function GET(request: Request) {
         staleAfter: d.staleAfter.toISOString(),
         generatedAt: d.generatedAt.toISOString(),
         editedText: d.editedText,
+        seriesId: d.seriesId,
+        seriesPosition: d.seriesPosition,
+        seriesContext: d.seriesContext,
+        seriesTitle: d.seriesTitle ?? null,
         researchItem: d.researchTitle
           ? {
               title: d.researchTitle,

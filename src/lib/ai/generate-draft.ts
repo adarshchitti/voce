@@ -32,6 +32,7 @@ export async function generateDraft(input: {
   url: string;
   rejections: Array<{ reasonCode: string; freeText: string | null; rejectionType?: string | null }>;
   instruction?: string;
+  projectContext?: string | null;
 }) {
   const voiceRejections = input.rejections
     .filter((r) => r.rejectionType == null || r.rejectionType === "voice")
@@ -89,7 +90,7 @@ Never use emojis as bullet-point substitutes.`;
 
   const client = getClient();
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 1000,
     system: `You are a ghostwriter for a LinkedIn content creator. Your sole job is to write posts
 that sound EXACTLY like this specific person - not like generic LinkedIn AI content.
@@ -107,6 +108,8 @@ Legacy categorical context:
 
 Raw voice description from the creator:
 ${input.rawDescription}
+
+${input.projectContext?.trim() ? `---\n${input.projectContext}\n---` : ""}
 
 STRICT RULES:
 - Never exceed 3000 characters total (LinkedIn's hard limit)

@@ -38,6 +38,25 @@ Edited: ${edited}`,
   return response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
 }
 
+async function generateSeriesContextSummary(postText: string) {
+  const client = getClient();
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 140,
+    messages: [
+      {
+        role: "user",
+        content: `Summarise this LinkedIn post in 40-60 words, capturing: the main argument or insight,
+any specific examples or data points mentioned, and the tone. This summary will be used
+to give context to the next post in the same series.
+Post: ${postText}
+Return plain text only, no JSON, no bullet points.`,
+      },
+    ],
+  });
+  return response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
+}
+
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const userId = await requireAuth();
@@ -90,6 +109,17 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       editDiffSummary,
       editDepthPct,
     });
+
+    if (draft.seriesId) {
+      const summary = await generateSeriesContextSummary(draft.editedText ?? draft.draftText);
+      if (summary) {
+        await db
+          .update(draftQueue)
+          .set({ seriesContext: summary })
+          .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
+        // TODO(stage2-followup): also persist summary to posts.series_context once schema includes that column.
+      }
+    }
     return Response.json({ scheduledAt: scheduledAt.toISOString() });
   } catch (error) {
     console.error('Approve error:', error)

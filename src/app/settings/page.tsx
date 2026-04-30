@@ -2,6 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
+import { Loader2, Sparkles } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
 
@@ -16,6 +17,9 @@ interface TopicRow {
   topicLabel: string;
   tavilyQuery: string;
   sourceUrls: string[];
+  priorityWeight: number;
+  lastSavedTopicLabel?: string;
+  querySuggested?: boolean;
 }
 
 function SettingsSection({
@@ -75,6 +79,7 @@ export default function SettingsPage() {
   });
   const [savingTellSettings, setSavingTellSettings] = useState(false);
   const [topics, setTopics] = useState<TopicRow[]>([]);
+  const [suggestingTopicIndex, setSuggestingTopicIndex] = useState<number | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -108,8 +113,11 @@ export default function SettingsPage() {
                 topicLabel: topic.topicLabel ?? "",
                 tavilyQuery: topic.tavilyQuery ?? "",
                 sourceUrls: topic.sourceUrls ?? [],
+                priorityWeight: topic.priorityWeight ?? 3,
+                lastSavedTopicLabel: topic.topicLabel ?? "",
+                querySuggested: false,
               }))
-            : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [] }],
+            : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false }],
         );
       });
 
@@ -149,9 +157,35 @@ export default function SettingsPage() {
     showToast(response.ok ? "Voice profile saved" : "Failed to save", response.ok ? "success" : "error");
   }
 
-  const updateTopic = (index: number, field: keyof TopicRow, value: string | string[]) => {
+  const updateTopic = (index: number, field: keyof TopicRow, value: string | string[] | number | boolean | undefined) => {
     setTopics((prev) => prev.map((topic, i) => (i === index ? { ...topic, [field]: value } : topic)));
   };
+
+  async function suggestTopicQuery(index: number) {
+    const topic = topics[index];
+    if (!topic?.topicLabel.trim()) return;
+    setSuggestingTopicIndex(index);
+    try {
+      const response = await fetch("/api/topics/suggest-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicLabel: topic.topicLabel.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.suggestedQuery) {
+        throw new Error("suggestion_failed");
+      }
+      setTopics((prev) =>
+        prev.map((row, i) =>
+          i === index ? { ...row, tavilyQuery: data.suggestedQuery, querySuggested: true } : row,
+        ),
+      );
+    } catch {
+      showToast("Couldn't suggest a query — try typing one manually", "error");
+    } finally {
+      setSuggestingTopicIndex(null);
+    }
+  }
 
   async function saveTopics() {
     const validTopics = topics
@@ -160,6 +194,7 @@ export default function SettingsPage() {
         topicLabel: topic.topicLabel.trim(),
         tavilyQuery: topic.tavilyQuery.trim(),
         sourceUrls: topic.sourceUrls.map((url) => url.trim()).filter(Boolean),
+        priorityWeight: topic.priorityWeight ?? 3,
       }))
       .filter((topic) => topic.topicLabel && topic.tavilyQuery);
 
@@ -176,6 +211,8 @@ export default function SettingsPage() {
           topicLabel: topic.topicLabel,
           tavilyQuery: topic.tavilyQuery,
           sourceUrls: topic.sourceUrls,
+          priorityWeight: topic.priorityWeight,
+          tavilyQueryConfirmed: true,
         }),
       }),
     );
@@ -194,8 +231,11 @@ export default function SettingsPage() {
               topicLabel: topic.topicLabel ?? "",
               tavilyQuery: topic.tavilyQuery ?? "",
               sourceUrls: topic.sourceUrls ?? [],
+              priorityWeight: topic.priorityWeight ?? 3,
+              lastSavedTopicLabel: topic.topicLabel ?? "",
+              querySuggested: false,
             }))
-          : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [] }],
+          : [{ topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false }],
       );
       return;
     }
@@ -573,17 +613,64 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="block text-xs font-medium text-slate-600" title="Higher priority = more drafts generated from this topic">
+                      Priority
+                    </label>
+                    <span className="text-xs text-slate-400">Higher priority = more drafts generated from this topic</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((weight) => (
+                      <button
+                        key={weight}
+                        type="button"
+                        onClick={() => updateTopic(i, "priorityWeight", weight)}
+                        className={`h-7 w-7 rounded-sm border text-xs transition-colors ${
+                          (topic.priorityWeight ?? 3) === weight
+                            ? "bg-primary text-primary-foreground"
+                            : "border-slate-200 bg-background hover:bg-accent"
+                        }`}
+                      >
+                        {weight}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">
                     Search query
                     <span className="ml-1 font-normal text-slate-400">— what to search for on the web</span>
                   </label>
-                  <input
-                    type="text"
-                    value={topic.tavilyQuery}
-                    onChange={(e) => updateTopic(i, "tavilyQuery", e.target.value)}
-                    placeholder="e.g. agentic AI systems 2025"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={topic.tavilyQuery}
+                      onChange={(e) => {
+                        updateTopic(i, "tavilyQuery", e.target.value);
+                        updateTopic(i, "querySuggested", false);
+                      }}
+                      placeholder="e.g. agentic AI systems 2025"
+                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        topic.querySuggested ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-white"
+                      }`}
+                    />
+                    {topic.topicLabel.trim() &&
+                    (!topic.tavilyQuery.trim() || topic.topicLabel.trim() !== (topic.lastSavedTopicLabel ?? "").trim()) ? (
+                      <button
+                        type="button"
+                        onClick={() => suggestTopicQuery(i)}
+                        disabled={suggestingTopicIndex === i}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {suggestingTopicIndex === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                        Suggest query
+                      </button>
+                    ) : null}
+                  </div>
+                  {topic.querySuggested ? (
+                    <p className="mt-1 text-xs text-amber-600">AI suggested — edit if needed</p>
+                  ) : null}
                 </div>
 
                 <div>
@@ -614,7 +701,12 @@ export default function SettingsPage() {
 
           {topics.length < 5 ? (
             <button
-              onClick={() => setTopics((prev) => [...prev, { topicLabel: "", tavilyQuery: "", sourceUrls: [] }])}
+              onClick={() =>
+                setTopics((prev) => [
+                  ...prev,
+                  { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
+                ])
+              }
               className="w-full rounded-xl border border-dashed border-slate-300 py-2 text-sm text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700"
             >
               + Add topic

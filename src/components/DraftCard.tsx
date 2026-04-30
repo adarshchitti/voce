@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { ChevronRight, FolderKanban } from "lucide-react";
 import RejectionModal from "./RejectionModal";
 import { useToast } from "./Toast";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export type DraftView = {
   id: string;
@@ -25,6 +27,10 @@ export type DraftView = {
     publishedAt: string | null;
   } | null;
   editedText?: string | null;
+  seriesId?: string | null;
+  seriesPosition?: number | null;
+  seriesContext?: string | null;
+  seriesTitle?: string | null;
 };
 
 function isNearStale(staleAfter: string | Date): boolean {
@@ -201,33 +207,61 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
 
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-        <div className="flex items-center gap-3">
-          {currentDraft.voiceScore != null ? (
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                currentDraft.voiceScore != null && currentDraft.voiceScore >= 8
-                  ? "bg-green-100 text-green-700"
-                  : currentDraft.voiceScore != null && currentDraft.voiceScore >= 5
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-red-100 text-red-700"
-              }`}
-            >
-              Voice {currentDraft.voiceScore}/10
-            </span>
-          ) : (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Voice learning</span>
-          )}
-          {currentDraft.researchItem ? (
-            <a href={currentDraft.researchItem.url} target="_blank" rel="noopener noreferrer" className="max-w-xs truncate text-xs text-blue-600 hover:text-blue-700 hover:underline">
-              {currentDraft.researchItem.title}
-            </a>
-          ) : null}
+      <div className="border-b border-slate-100 px-5 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {currentDraft.voiceScore != null ? (
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  currentDraft.voiceScore != null && currentDraft.voiceScore >= 8
+                    ? "bg-green-100 text-green-700"
+                    : currentDraft.voiceScore != null && currentDraft.voiceScore >= 5
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-red-100 text-red-700"
+                }`}
+              >
+                Voice {currentDraft.voiceScore}/10
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Voice learning</span>
+            )}
+            {currentDraft.seriesId ? (
+              <a
+                href={`/projects/${currentDraft.seriesId}`}
+                className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <FolderKanban className="h-3 w-3" />
+                {currentDraft.seriesTitle
+                  ? `${currentDraft.seriesTitle.slice(0, 20)}${currentDraft.seriesTitle.length > 20 ? "…" : ""}`
+                  : "Project"}
+                {currentDraft.seriesPosition ? ` · #${currentDraft.seriesPosition}` : ""}
+              </a>
+            ) : null}
+            {currentDraft.researchItem ? (
+              <a href={currentDraft.researchItem.url} target="_blank" rel="noopener noreferrer" className="max-w-xs truncate text-xs text-blue-600 hover:text-blue-700 hover:underline">
+                {currentDraft.researchItem.title}
+              </a>
+            ) : null}
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {isNearStale(draft.staleAfter) ? <span className="text-xs font-medium text-amber-600">Expires soon</span> : null}
+            <span className="text-xs text-slate-400">{age}</span>
+          </div>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          {isNearStale(draft.staleAfter) ? <span className="text-xs font-medium text-amber-600">Expires soon</span> : null}
-          <span className="text-xs text-slate-400">{age}</span>
-        </div>
+        {currentDraft.seriesContext ? (
+          <div className="mt-2">
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                <ChevronRight className="h-3 w-3 transition-transform [[data-state=open]_&]:rotate-90" />
+                Continuing from post #{Math.max(1, (currentDraft.seriesPosition ?? 1) - 1)}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-1 border-l-2 py-1 pl-3 text-xs text-muted-foreground italic">
+                {currentDraft.seriesContext}
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        ) : null}
       </div>
 
       {hasFlags ? (

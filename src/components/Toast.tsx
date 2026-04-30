@@ -2,18 +2,34 @@
 
 import { createContext, useCallback, useContext, useState } from 'react'
 
-type Toast = { id: string; message: string; type: 'success' | 'error' }
-type ToastContextType = { showToast: (message: string, type?: 'success' | 'error') => void }
+type Toast = {
+  id: string
+  message: string
+  type: 'success' | 'error'
+  actionLabel?: string
+  actionHref?: string
+}
+type ToastContextType = {
+  showToast: (
+    message: string,
+    type?: 'success' | 'error',
+    action?: { label: string; href: string }
+  ) => void
+}
 
 const ToastContext = createContext<ToastContextType>({ showToast: () => {} })
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
-  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = useCallback((
+    message: string,
+    type: 'success' | 'error' = 'success',
+    action?: { label: string; href: string }
+  ) => {
     const id = Math.random().toString(36).slice(2)
-    setToasts((prev) => [...prev, { id, message, type }])
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000)
+    setToasts((prev) => [...prev, { id, message, type, actionLabel: action?.label, actionHref: action?.href }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500)
   }, [])
 
   return (
@@ -27,8 +43,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               toast.type === 'success' ? 'bg-slate-900' : 'bg-red-600'
             }`}
           >
-            {toast.type === 'success' ? '✓ ' : '✕ '}
-            {toast.message}
+            <div>{toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}</div>
+            {toast.actionHref && toast.actionLabel ? (
+              <a href={toast.actionHref} className="mt-1 inline-block text-xs underline">
+                {toast.actionLabel}
+              </a>
+            ) : null}
           </div>
         ))}
       </div>

@@ -8,6 +8,8 @@ import {
   timestamp,
   time,
   json,
+  date,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
@@ -30,15 +32,60 @@ export const topicSubscriptions = pgTable("topic_subscriptions", {
   userId: text("user_id").notNull(), // STAGE2: change to uuid
   topicLabel: text("topic_label").notNull(),
   tavilyQuery: text("tavily_query").notNull(),
+  priorityWeight: integer("priority_weight").notNull().default(3),
+  tavilyQuerySuggested: text("tavily_query_suggested"),
+  tavilyQueryConfirmed: boolean("tavily_query_confirmed").notNull().default(false),
   sourceUrls: text("source_urls").array().default(sql`'{}'`),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const contentSeries = pgTable("content_series", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // STAGE2: change to uuid to match auth.uid()
+  title: text("title").notNull(),
+  description: text("description"),
+  arcType: text("arc_type"),
+  targetPosts: integer("target_posts"),
+  status: text("status").notNull().default("active"),
+  hashtags: text("hashtags").array(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  goal: text("goal"),
+  targetAudience: text("target_audience"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  postTypePreferences: text("post_type_preferences").array(),
+  projectSourceUrls: text("project_source_urls").array(),
+  projectTopics: text("project_topics").array(),
+  autoGenerate: boolean("auto_generate").notNull().default(true),
+});
+
+export const seriesTopicSubscriptions = pgTable(
+  "series_topic_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seriesId: uuid("series_id")
+      .notNull()
+      .references(() => contentSeries.id),
+    topicSubscriptionId: uuid("topic_subscription_id")
+      .notNull()
+      .references(() => topicSubscriptions.id),
+    priorityWeight: integer("priority_weight").notNull().default(3),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueSeriesTopic: unique().on(table.seriesId, table.topicSubscriptionId),
+  }),
+);
+
 export const draftQueue = pgTable("draft_queue", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: text("user_id").notNull(), // STAGE2: change to uuid
   researchItemId: uuid("research_item_id").references(() => researchItems.id),
+  seriesId: uuid("series_id").references(() => contentSeries.id),
+  seriesPosition: integer("series_position"),
+  seriesContext: text("series_context"),
   draftText: text("draft_text").notNull(),
   hook: text("hook").notNull(),
   format: text("format").notNull().default("text_post"),
@@ -76,6 +123,8 @@ export const posts = pgTable("posts", {
   draftId: uuid("draft_id")
     .notNull()
     .references(() => draftQueue.id),
+  seriesId: uuid("series_id").references(() => contentSeries.id),
+  seriesPosition: integer("series_position"),
   linkedinPostId: text("linkedin_post_id"),
   contentSnapshot: text("content_snapshot").notNull(),
   status: text("status").notNull().default("scheduled"),
@@ -189,6 +238,10 @@ export const draftMemories = pgTable("draft_memories", {
 
 export type DraftMemory = InferSelectModel<typeof draftMemories>;
 export type NewDraftMemory = InferInsertModel<typeof draftMemories>;
+export type ContentSeries = InferSelectModel<typeof contentSeries>;
+export type NewContentSeries = InferInsertModel<typeof contentSeries>;
+export type SeriesTopicSubscription = InferSelectModel<typeof seriesTopicSubscriptions>;
+export type NewSeriesTopicSubscription = InferInsertModel<typeof seriesTopicSubscriptions>;
 
 export const linkedinTokens = pgTable("linkedin_tokens", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
