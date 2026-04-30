@@ -2,9 +2,10 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
+import { cn } from "@/lib/utils";
 
 interface LinkedInTokenView {
   status: "active" | "expired" | string;
@@ -20,26 +21,6 @@ interface TopicRow {
   priorityWeight: number;
   lastSavedTopicLabel?: string;
   querySuggested?: boolean;
-}
-
-function SettingsSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="font-semibold text-slate-900">{title}</h2>
-        {description ? <p className="mt-0.5 text-sm text-slate-500">{description}</p> : null}
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  );
 }
 
 export default function SettingsPage() {
@@ -80,6 +61,7 @@ export default function SettingsPage() {
   const [savingTellSettings, setSavingTellSettings] = useState(false);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [suggestingTopicIndex, setSuggestingTopicIndex] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<"voice" | "topics" | "scheduling" | "linkedin">("voice");
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -142,6 +124,28 @@ export default function SettingsPage() {
         });
       })
       .catch(() => setLinkedinToken(null));
+  }, []);
+
+  useEffect(() => {
+    const sectionIds = ["voice", "topics", "scheduling", "linkedin"] as const;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!visible) return;
+        const id = visible.target.id as typeof sectionIds[number];
+        setActiveSection(id);
+      },
+      { rootMargin: "-20% 0px -65% 0px", threshold: [0.2, 0.5, 0.8] },
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   async function saveVoice() {
@@ -366,501 +370,551 @@ export default function SettingsPage() {
           : { label: "UNCALIBRATED ○", className: "bg-red-100 text-red-700", nudge: "Add at least 3 posts to start calibrating your voice." };
 
   return (
-    <div className="space-y-5">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-[22px] font-semibold text-[#111827]">Settings</h1>
+        <p className="mt-0.5 text-[13px] text-[#6B7280]">Manage voice, topics, scheduling, and LinkedIn connection</p>
       </div>
 
-      <SettingsSection title="LinkedIn" description="Connect your account to enable publishing">
-        {!linkedinToken ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-700">No account connected</p>
-              <p className="mt-0.5 text-xs text-slate-400">Required to publish posts</p>
-            </div>
-            <a
-              href="/api/auth/linkedin"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-            >
-              Connect LinkedIn
-            </a>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[180px_1fr]">
+        <nav className="sticky top-6 hidden self-start lg:block">
+          <div className="space-y-1 rounded-lg border border-[#E5E7EB] bg-white p-2 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+            {[
+              { id: "voice", label: "Voice Profile" },
+              { id: "topics", label: "Topics" },
+              { id: "scheduling", label: "Scheduling" },
+              { id: "linkedin", label: "LinkedIn" },
+            ].map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                className={cn(
+                  "block rounded-md px-3 py-1.5 text-[13px] transition-colors",
+                  activeSection === item.id
+                    ? "bg-[#EFF6FF] font-medium text-[#2563EB]"
+                    : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]",
+                )}
+              >
+                {item.label}
+              </a>
+            ))}
           </div>
-        ) : null}
+        </nav>
 
-        {linkedinToken && linkedinToken.status === "active" ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600">
-                <span className="text-sm font-bold text-white">in</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-slate-900">LinkedIn connected</p>
-                  <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  Expires {formatDistanceToNow(new Date(linkedinToken.tokenExpiry), { addSuffix: true })}
-                  {" · "}
-                  <span className="font-mono text-slate-300">
-                    {linkedinToken.personUrn.replace("urn:li:person:", "").slice(0, 8)}...
+        <div className="space-y-8">
+          <section id="voice" className="scroll-mt-6 space-y-4">
+            <div className="border-b border-[#E5E7EB] pb-3">
+              <h2 className="text-[16px] font-semibold text-[#111827]">Voice Profile</h2>
+              <p className="mt-0.5 text-[13px] text-[#6B7280]">How your posts should sound</p>
+            </div>
+
+            <div className="space-y-5 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      calibrationQuality === "full" && "bg-[#16A34A]",
+                      (calibrationQuality === "mostly" || calibrationQuality === "partial") && "bg-[#D97706]",
+                      calibrationQuality === "uncalibrated" && "bg-[#DC2626]",
+                    )}
+                  />
+                  <span className="text-[13px] font-medium text-[#111827]">Voice {calibrationUi.label}</span>
+                  <span className="text-[12px] text-[#6B7280]">
+                    {sampleCount} sample post{sampleCount !== 1 ? "s" : ""}
                   </span>
-                </p>
-              </div>
-            </div>
-            <a
-              href="/api/auth/linkedin"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              Reconnect
-            </a>
-          </div>
-        ) : null}
-
-        {linkedinToken && linkedinToken.status !== "active" ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
-                <span className="text-sm font-bold text-red-600">in</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-slate-900">LinkedIn disconnected</p>
-                  <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600">Expired</span>
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">Posts will not publish until reconnected</p>
-              </div>
-            </div>
-            <a
-              href="/api/auth/linkedin"
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
-            >
-              Reconnect
-            </a>
-          </div>
-        ) : null}
-      </SettingsSection>
-
-      <SettingsSection title="Voice Profile" description="Help the AI write in your style">
-        <div className="mb-4 space-y-2">
-          <p className="text-sm text-slate-700">
-            Voice calibration: <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${calibrationUi.className}`}>{calibrationUi.label}</span>
-          </p>
-          <p className="text-xs text-slate-500">{sampleCount} sample posts added · <span className="text-blue-600">Add more posts ↗</span></p>
-          <p className="text-xs text-slate-500">{calibrationUi.nudge}</p>
-        </div>
-
-        {isCalibrated && extractedPatterns ? (
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Extracted patterns</p>
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
-              <div><span className="text-slate-400">Sentences:</span> {extractedPatterns.sentenceLength}</div>
-              <div><span className="text-slate-400">Hook style:</span> {extractedPatterns.hookStyle}</div>
-              <div><span className="text-slate-400">POV:</span> {extractedPatterns.pov}</div>
-              <div><span className="text-slate-400">Format:</span> {extractedPatterns.formattingStyle}</div>
-              {extractedPatterns.toneMarkers?.length > 0 ? (
-                <div className="col-span-2"><span className="text-slate-400">Tone:</span> {extractedPatterns.toneMarkers.join(", ")}</div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Style description</label>
-            <textarea
-              className="h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={rawDescription}
-              onChange={(e) => setRawDescription(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Sample posts (split by ---)</label>
-            <textarea
-              className="h-40 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={samplePostsText}
-              onChange={(e) => setSamplePostsText(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Personal context
-              <span className="ml-1 text-xs font-normal text-slate-400">
-                - used when "Add personal angle" is triggered on a draft
-              </span>
-            </label>
-            <textarea
-              value={personalContext}
-              onChange={(e) => setPersonalContext(e.target.value)}
-              placeholder="Describe your background, current projects, and experiences that are relevant to your posts. E.g. 'Junior CS student doing agentic AI research, interning at Klaviyo...'"
-              rows={4}
-              className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <button onClick={saveVoice} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-green-700">
-            Save voice
-          </button>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Your signature phrases (from your posts)</label>
-            <div className="mb-2 flex flex-wrap gap-2">
-              {signaturePhrases.map((phrase) => (
-                <button
-                  key={phrase}
-                  onClick={async () => {
-                    const next = signaturePhrases.filter((p) => p !== phrase);
-                    setSignaturePhrases(next);
-                    await patchVoiceOverrides({ signaturePhrases: next });
-                  }}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
-                >
-                  {phrase} ×
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={newSignaturePhrase}
-                onChange={(e) => setNewSignaturePhrase(e.target.value)}
-                placeholder="Add phrase"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
-              <button
-                onClick={async () => {
-                  const phrase = newSignaturePhrase.trim();
-                  if (!phrase) return;
-                  const next = [...signaturePhrases, phrase];
-                  setSignaturePhrases(next);
-                  setNewSignaturePhrase("");
-                  await patchVoiceOverrides({ signaturePhrases: next });
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                + Add phrase
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Patterns this writer avoids - edit if wrong</label>
-            <div className="mb-2 flex flex-wrap gap-2">
-              {neverPatterns.map((pattern) => (
-                <button
-                  key={pattern}
-                  onClick={async () => {
-                    const next = neverPatterns.filter((p) => p !== pattern);
-                    setNeverPatterns(next);
-                    await patchVoiceOverrides({ neverPatterns: next });
-                  }}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700"
-                >
-                  {pattern} ×
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                value={newNeverPattern}
-                onChange={(e) => setNewNeverPattern(e.target.value)}
-                placeholder="Add pattern"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
-              <button
-                onClick={async () => {
-                  const pattern = newNeverPattern.trim();
-                  if (!pattern) return;
-                  const next = [...neverPatterns, pattern];
-                  setNeverPatterns(next);
-                  setNewNeverPattern("");
-                  await patchVoiceOverrides({ neverPatterns: next });
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                + Add pattern
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Typical post structure (extracted - edit to correct)</label>
-            <textarea
-              value={postStructureTemplate}
-              onChange={(e) => setPostStructureTemplate(e.target.value)}
-              onBlur={() => patchVoiceOverrides({ postStructureTemplate })}
-              rows={3}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={emojiNeverOverride}
-              onChange={async (e) => {
-                const next = e.target.checked;
-                setEmojiNeverOverride(next);
-                await patchVoiceOverrides({ emojiNeverOverride: next });
-              }}
-            />
-            Never use emojis in generated posts
-          </label>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Words/phrases to never use</label>
-            <input
-              value={userBannedWordsText}
-              onChange={(e) => setUserBannedWordsText(e.target.value)}
-              placeholder="synergy, leverage, circle back, game-changer"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Additional voice notes</label>
-            <textarea
-              value={userNotes}
-              onChange={(e) => setUserNotes(e.target.value)}
-              placeholder="I never use bullet lists. I always write in first person. I avoid exclamation marks."
-              className="h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <button
-            onClick={saveOverrides}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50"
-          >
-            Save voice overrides
-          </button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Topics & Sources" description="What you want to post about — used to find relevant articles daily">
-        <div className="space-y-3">
-          {topics.map((topic, i) => (
-            <div key={topic.id ?? i} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">Topic {i + 1}</span>
-                {topics.length > 1 ? (
-                  <button
-                    onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))}
-                    className="text-xs text-red-500 hover:text-red-700"
-                  >
-                    Remove
-                  </button>
-                ) : null}
+                <span className="hidden text-[12px] text-[#6B7280] md:block">{calibrationUi.nudge}</span>
               </div>
 
-              <div className="space-y-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Topic name</label>
-                  <input
-                    type="text"
-                    value={topic.topicLabel}
-                    onChange={(e) => updateTopic(i, "topicLabel", e.target.value)}
-                    placeholder="e.g. Agentic AI"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <div className="space-y-1.5">
+                <label className="text-[13px] font-medium text-[#374151]">Sample posts</label>
+                <p className="text-[12px] text-[#9CA3AF]">Paste 8+ of your best LinkedIn posts. Separate each post with a blank line.</p>
+                <textarea
+                  rows={8}
+                  value={samplePostsText}
+                  onChange={(e) => setSamplePostsText(e.target.value)}
+                  className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-medium text-[#374151]">Raw description</label>
+                  <p className="text-[12px] text-[#9CA3AF]">Short plain-English description of your writing style</p>
+                  <textarea
+                    rows={3}
+                    value={rawDescription}
+                    onChange={(e) => setRawDescription(e.target.value)}
+                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
-
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <label className="block text-xs font-medium text-slate-600" title="Higher priority = more drafts generated from this topic">
-                      Priority
-                    </label>
-                    <span className="text-xs text-slate-400">Higher priority = more drafts generated from this topic</span>
-                  </div>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((weight) => (
-                      <button
-                        key={weight}
-                        type="button"
-                        onClick={async () => {
-                          updateTopic(i, "priorityWeight", weight);
-                          const topicId = topics[i]?.id;
-                          if (!topicId) return;
-                          const { response } = await patchTopicById(topicId, { priorityWeight: weight });
-                          if (!response.ok) {
-                            showToast("Failed to update priority", "error");
-                          }
-                        }}
-                        className={`h-7 w-7 rounded-sm border text-xs transition-colors ${
-                          (topic.priorityWeight ?? 3) === weight
-                            ? "bg-primary text-primary-foreground"
-                            : "border-slate-200 bg-background hover:bg-accent"
-                        }`}
-                      >
-                        {weight}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    Search query
-                    <span className="ml-1 font-normal text-slate-400">— what to search for on the web</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={topic.tavilyQuery}
-                      onChange={(e) => {
-                        updateTopic(i, "tavilyQuery", e.target.value);
-                        updateTopic(i, "querySuggested", false);
-                      }}
-                      placeholder="e.g. agentic AI systems 2025"
-                      className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                        topic.querySuggested ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-white"
-                      }`}
-                    />
-                    {topic.topicLabel.trim() &&
-                    (!topic.tavilyQuery.trim() || topic.topicLabel.trim() !== (topic.lastSavedTopicLabel ?? "").trim()) ? (
-                      <button
-                        type="button"
-                        onClick={() => suggestTopicQuery(i)}
-                        disabled={suggestingTopicIndex === i}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {suggestingTopicIndex === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                        Suggest query
-                      </button>
-                    ) : null}
-                  </div>
-                  {topic.querySuggested ? (
-                    <p className="mt-1 text-xs text-amber-600">AI suggested — edit if needed</p>
-                  ) : null}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    RSS feeds
-                    <span className="ml-1 font-normal text-slate-400">— optional, one URL per line</span>
-                  </label>
-                  <textarea
-                    value={topic.sourceUrls.join("\n")}
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-medium text-[#374151]">Tone markers</label>
+                  <p className="text-[12px] text-[#9CA3AF]">Comma-separated tone keywords</p>
+                  <input
+                    value={toneMarkers.join(", ")}
                     onChange={(e) =>
-                      updateTopic(
-                        i,
-                        "sourceUrls",
+                      setToneMarkers(
                         e.target.value
-                          .split("\n")
-                          .map((s) => s.trim())
+                          .split(",")
+                          .map((m) => m.trim())
                           .filter(Boolean),
                       )
                     }
-                    placeholder="https://example.com/feed"
+                    className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-medium text-[#374151]">Banned words</label>
+                  <p className="text-[12px] text-[#9CA3AF]">Comma-separated words/phrases to avoid</p>
+                  <input
+                    value={userBannedWordsText}
+                    onChange={(e) => setUserBannedWordsText(e.target.value)}
+                    className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[13px] font-medium text-[#374151]">User notes</label>
+                  <p className="text-[12px] text-[#9CA3AF]">Additional instructions for style constraints</p>
+                  <textarea
                     rows={2}
-                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={userNotes}
+                    onChange={(e) => setUserNotes(e.target.value)}
+                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-[13px] font-medium text-[#374151]">Personal context</label>
+                  <p className="text-[12px] text-[#9CA3AF]">Used by the personal-angle draft enhancement</p>
+                  <textarea
+                    rows={2}
+                    value={personalContext}
+                    onChange={(e) => setPersonalContext(e.target.value)}
+                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
               </div>
-              <div className="flex justify-end">
-                <button
-                  onClick={() => saveTopicRow(i)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  Save topic
-                </button>
-              </div>
-            </div>
-          ))}
 
-          {topics.length < 5 ? (
-            <button
-              onClick={() =>
-                setTopics((prev) => [
-                  ...prev,
-                  { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
-                ])
-              }
-              className="w-full rounded-xl border border-dashed border-slate-300 py-2 text-sm text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700"
-            >
-              + Add topic
-            </button>
-          ) : null}
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] text-[#6B7280] hover:text-[#374151]">
+                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                  Extracted voice patterns
+                </summary>
+                <div className="mt-3 space-y-4 pl-5">
+                  {isCalibrated && extractedPatterns ? (
+                    <div className="grid grid-cols-1 gap-2 text-[12px] text-[#6B7280] md:grid-cols-2">
+                      <div><span className="text-[#9CA3AF]">Sentences:</span> {extractedPatterns.sentenceLength}</div>
+                      <div><span className="text-[#9CA3AF]">Hook style:</span> {extractedPatterns.hookStyle}</div>
+                      <div><span className="text-[#9CA3AF]">POV:</span> {extractedPatterns.pov}</div>
+                      <div><span className="text-[#9CA3AF]">Format:</span> {extractedPatterns.formattingStyle}</div>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="mb-2 text-[12px] font-medium text-[#6B7280]">Signature phrases</p>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {signaturePhrases.map((phrase) => (
+                        <button
+                          key={phrase}
+                          onClick={async () => {
+                            const next = signaturePhrases.filter((p) => p !== phrase);
+                            setSignaturePhrases(next);
+                            await patchVoiceOverrides({ signaturePhrases: next });
+                          }}
+                          className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2.5 py-1 text-[11px] text-[#6B7280]"
+                        >
+                          {phrase} ×
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={newSignaturePhrase}
+                        onChange={(e) => setNewSignaturePhrase(e.target.value)}
+                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                      />
+                      <button
+                        onClick={async () => {
+                          const phrase = newSignaturePhrase.trim();
+                          if (!phrase) return;
+                          const next = [...signaturePhrases, phrase];
+                          setSignaturePhrases(next);
+                          setNewSignaturePhrase("");
+                          await patchVoiceOverrides({ signaturePhrases: next });
+                        }}
+                        className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-[12px] font-medium text-[#6B7280]">Never patterns</p>
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {neverPatterns.map((pattern) => (
+                        <button
+                          key={pattern}
+                          onClick={async () => {
+                            const next = neverPatterns.filter((p) => p !== pattern);
+                            setNeverPatterns(next);
+                            await patchVoiceOverrides({ neverPatterns: next });
+                          }}
+                          className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2.5 py-1 text-[11px] text-[#6B7280]"
+                        >
+                          {pattern} ×
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={newNeverPattern}
+                        onChange={(e) => setNewNeverPattern(e.target.value)}
+                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                      />
+                      <button
+                        onClick={async () => {
+                          const pattern = newNeverPattern.trim();
+                          if (!pattern) return;
+                          const next = [...neverPatterns, pattern];
+                          setNeverPatterns(next);
+                          setNewNeverPattern("");
+                          await patchVoiceOverrides({ neverPatterns: next });
+                        }}
+                        className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[12px] font-medium text-[#6B7280]">Structure template</label>
+                    <textarea
+                      rows={3}
+                      value={postStructureTemplate}
+                      onChange={(e) => setPostStructureTemplate(e.target.value)}
+                      onBlur={() => patchVoiceOverrides({ postStructureTemplate })}
+                      className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[12px]"
+                    />
+                  </div>
+                </div>
+              </details>
 
-          <button
-            onClick={saveTopics}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50"
-          >
-            Save topics
-          </button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Scheduling" description="When approved posts are published">
-        <SchedulingForm initialSettings={schedulingSettings} />
-      </SettingsSection>
-
-      <SettingsSection
-        title="Content style preferences"
-        description="Control which patterns the AI tell scanner flags in your drafts"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Numbered lists</label>
-            <div className="flex gap-2">
-              {[
-                { value: "always", label: "Always flag" },
-                { value: "three_plus", label: "Flag if >3 items" },
-                { value: "never", label: "Never flag" },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setTellFlagNumberedLists(opt.value as "always" | "three_plus" | "never")}
-                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    tellFlagNumberedLists === opt.value
-                      ? "border-blue-500 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-slate-400">
-              Default: flag only if more than 3 items - short numbered comparisons are fine
-            </p>
-          </div>
-
-          {[
-            { key: "tellFlagBannedWords", label: "Banned words", desc: "delve, leverage, ecosystem etc" },
-            { key: "tellFlagEmDash", label: "Em dash overuse", desc: "more than one em dash per post" },
-            {
-              key: "tellFlagEngagementBeg",
-              label: "Engagement begs",
-              desc: '"what do you think? drop a comment"',
-            },
-            { key: "tellFlagEveryLine", label: "Every-line-break format", desc: "each sentence on its own line" },
-          ].map((item) => (
-            <div key={item.key} className="flex items-center justify-between border-b border-slate-100 py-2 last:border-0">
-              <div>
-                <p className="text-sm font-medium text-slate-700">{item.label}</p>
-                <p className="text-xs text-slate-400">{item.desc}</p>
-              </div>
-              <button
-                onClick={() => toggleTellFlag(item.key as keyof typeof tellFlags)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                  tellFlags[item.key as keyof typeof tellFlags] ? "bg-blue-600" : "bg-slate-200"
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                    tellFlags[item.key as keyof typeof tellFlags] ? "translate-x-4" : "translate-x-1"
-                  }`}
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <p className="text-[13px] font-medium text-[#374151]">Never use emojis</p>
+                  <p className="text-[12px] text-[#9CA3AF]">Override all emoji generation</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={emojiNeverOverride}
+                  onChange={async (e) => {
+                    const next = e.target.checked;
+                    setEmojiNeverOverride(next);
+                    await patchVoiceOverrides({ emojiNeverOverride: next });
+                  }}
                 />
+              </div>
+
+              <div className="border-t border-[#E5E7EB] pt-4">
+                <p className="mb-3 text-[12px] text-[#6B7280]">Content style scanner preferences</p>
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    {[
+                      { value: "always", label: "Always flag" },
+                      { value: "three_plus", label: "Flag if >3 items" },
+                      { value: "never", label: "Never flag" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setTellFlagNumberedLists(opt.value as "always" | "three_plus" | "never")}
+                        className={cn(
+                          "rounded-md border px-3 py-1.5 text-[12px] transition-colors",
+                          tellFlagNumberedLists === opt.value
+                            ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
+                            : "border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6]",
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {[
+                    { key: "tellFlagBannedWords", label: "Banned words" },
+                    { key: "tellFlagEmDash", label: "Em dash overuse" },
+                    { key: "tellFlagEngagementBeg", label: "Engagement begs" },
+                    { key: "tellFlagEveryLine", label: "Every-line-break format" },
+                  ].map((item) => (
+                    <div key={item.key} className="flex items-center justify-between border-b border-[#E5E7EB] py-2 last:border-0">
+                      <p className="text-[13px] text-[#374151]">{item.label}</p>
+                      <button
+                        onClick={() => toggleTellFlag(item.key as keyof typeof tellFlags)}
+                        className={cn(
+                          "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                          tellFlags[item.key as keyof typeof tellFlags] ? "bg-[#2563EB]" : "bg-[#E5E7EB]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
+                            tellFlags[item.key as keyof typeof tellFlags] ? "translate-x-4" : "translate-x-1",
+                          )}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={saveOverrides}
+                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]"
+              >
+                Save Voice Overrides
+              </button>
+              <button
+                onClick={handleSaveTellSettings}
+                disabled={savingTellSettings}
+                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
+              >
+                Save Style Preferences
+              </button>
+              <button
+                onClick={saveVoice}
+                className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#1D4ED8]"
+              >
+                Save Voice Profile
               </button>
             </div>
-          ))}
+          </section>
 
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={handleSaveTellSettings}
-              disabled={savingTellSettings}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
-            >
-              {savingTellSettings ? "Saving..." : "Save preferences"}
-            </button>
-          </div>
+          <section id="topics" className="scroll-mt-6 space-y-4">
+            <div className="border-b border-[#E5E7EB] pb-3">
+              <h2 className="text-[16px] font-semibold text-[#111827]">Topics</h2>
+              <p className="mt-0.5 text-[13px] text-[#6B7280]">What you want to post about</p>
+            </div>
+            <div className="space-y-4 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              {topics.map((topic, i) => (
+                <div
+                  key={topic.id ?? i}
+                  className="space-y-3 rounded-lg border border-[#E5E7EB] bg-white p-4 transition-colors hover:border-[#D1D5DB]"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-[#16A34A]" />
+                      <span className="text-[13.5px] font-medium text-[#111827]">{topic.topicLabel || "Untitled topic"}</span>
+                    </div>
+                    {topics.length > 1 ? (
+                      <button
+                        onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))}
+                        className="text-[#9CA3AF] transition-colors hover:text-[#DC2626]"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Topic label</label>
+                      <input
+                        type="text"
+                        value={topic.topicLabel}
+                        onChange={(e) => updateTopic(i, "topicLabel", e.target.value)}
+                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[13px]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Search query</label>
+                        {topic.topicLabel.trim() &&
+                        (!topic.tavilyQuery.trim() || topic.topicLabel.trim() !== (topic.lastSavedTopicLabel ?? "").trim()) ? (
+                          <button
+                            type="button"
+                            onClick={() => suggestTopicQuery(i)}
+                            disabled={suggestingTopicIndex === i}
+                            className="flex items-center gap-1 text-[11px] text-[#2563EB] hover:underline disabled:opacity-50"
+                          >
+                            {suggestingTopicIndex === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                            Suggest
+                          </button>
+                        ) : null}
+                      </div>
+                      <input
+                        type="text"
+                        value={topic.tavilyQuery}
+                        onChange={(e) => {
+                          updateTopic(i, "tavilyQuery", e.target.value);
+                          updateTopic(i, "querySuggested", false);
+                        }}
+                        className={cn(
+                          "h-8 w-full rounded-md border px-3 text-[13px]",
+                          topic.querySuggested ? "border-[#FDE68A] bg-[#FFFBEB]" : "border-[#E5E7EB] bg-white",
+                        )}
+                      />
+                      {topic.querySuggested ? <p className="text-[11px] text-[#D97706]">AI suggested - edit if needed</p> : null}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Source URLs</label>
+                      <input
+                        value={topic.sourceUrls.join(", ")}
+                        onChange={(e) =>
+                          updateTopic(
+                            i,
+                            "sourceUrls",
+                            e.target.value
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          )
+                        }
+                        placeholder="https://example.com/feed, ..."
+                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[13px]"
+                      />
+                      <p className="text-[11px] text-[#9CA3AF]">RSS feeds or blogs, comma separated</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-medium text-[#6B7280]">Priority</span>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((weight) => (
+                          <button
+                            key={weight}
+                            type="button"
+                            onClick={async () => {
+                              updateTopic(i, "priorityWeight", weight);
+                              const topicId = topics[i]?.id;
+                              if (!topicId) return;
+                              const { response } = await patchTopicById(topicId, { priorityWeight: weight });
+                              if (!response.ok) showToast("Failed to update priority", "error");
+                            }}
+                            className={cn(
+                              "h-7 w-7 rounded-md border text-[12px] transition-colors",
+                              (topic.priorityWeight ?? 3) === weight
+                                ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
+                                : "border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6]",
+                            )}
+                          >
+                            {weight}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => saveTopicRow(i)}
+                      className="h-7 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6]"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {topics.length < 5 ? (
+                <button
+                  onClick={() =>
+                    setTopics((prev) => [
+                      ...prev,
+                      { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
+                    ])
+                  }
+                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add topic
+                </button>
+              ) : null}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={saveTopics}
+                className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#1D4ED8]"
+              >
+                Save Topics
+              </button>
+            </div>
+          </section>
+
+          <section id="scheduling" className="scroll-mt-6 space-y-4">
+            <div className="border-b border-[#E5E7EB] pb-3">
+              <h2 className="text-[16px] font-semibold text-[#111827]">Scheduling</h2>
+              <p className="mt-0.5 text-[13px] text-[#6B7280]">When approved posts are published</p>
+            </div>
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              <SchedulingForm initialSettings={schedulingSettings} />
+            </div>
+          </section>
+
+          <section id="linkedin" className="scroll-mt-6 space-y-4">
+            <div className="border-b border-[#E5E7EB] pb-3">
+              <h2 className="text-[16px] font-semibold text-[#111827]">LinkedIn</h2>
+              <p className="mt-0.5 text-[13px] text-[#6B7280]">Connection status for publishing</p>
+            </div>
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              {!linkedinToken ? (
+                <div className="flex items-center justify-between rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#DC2626]">
+                      <span className="text-[12px] font-semibold text-white">in</span>
+                    </div>
+                    <div>
+                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn not connected</p>
+                      <p className="text-[12px] text-[#6B7280]">Connect to enable publishing</p>
+                    </div>
+                  </div>
+                  <a
+                    href="/api/auth/linkedin"
+                    className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium leading-8 text-white transition-colors hover:bg-[#B91C1C]"
+                  >
+                    Connect
+                  </a>
+                </div>
+              ) : linkedinToken.status === "active" ? (
+                <div className="flex items-center justify-between rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0077B5]">
+                      <span className="text-[12px] font-semibold text-white">in</span>
+                    </div>
+                    <div>
+                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn connected</p>
+                      <p className="text-[12px] text-[#6B7280]">
+                        Token expires {formatDistanceToNow(new Date(linkedinToken.tokenExpiry), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href="/api/auth/linkedin"
+                    className="h-8 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] leading-8 text-[#374151] transition-colors hover:bg-[#F3F4F6]"
+                  >
+                    Reconnect
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#DC2626]">
+                      <span className="text-[12px] font-semibold text-white">in</span>
+                    </div>
+                    <div>
+                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn token expired</p>
+                      <p className="text-[12px] text-[#6B7280]">Reconnect to resume publishing</p>
+                    </div>
+                  </div>
+                  <a
+                    href="/api/auth/linkedin"
+                    className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium leading-8 text-white transition-colors hover:bg-[#B91C1C]"
+                  >
+                    Reconnect now
+                  </a>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
-      </SettingsSection>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,6 @@ import { useToast } from "@/components/Toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,19 +64,31 @@ type ProjectDetail = {
 type TopicOption = { id: string; topicLabel: string };
 
 function statusBadge(status: string) {
-  if (status === "active") return <Badge className="border-green-200 bg-green-100 text-green-800">active</Badge>;
-  if (status === "paused") return <Badge className="border-amber-200 bg-amber-100 text-amber-800">paused</Badge>;
+  if (status === "active") return <Badge variant="success">active</Badge>;
+  if (status === "paused") return <Badge variant="warning">paused</Badge>;
   return <Badge variant="secondary">completed</Badge>;
+}
+
+function arcTypeLabel(arcType: string) {
+  const labels: Record<string, string> = {
+    build_in_public: "Build in public",
+    tutorial_sequence: "Tutorial sequence",
+    weekly_recurring: "Weekly recurring",
+    project_journey: "Project journey",
+    framework_series: "Framework series",
+    open_ended: "Open ended",
+  };
+  return labels[arcType] ?? arcType;
 }
 
 function voiceBadge(score: number | null) {
   if (score === null) return null;
   const color =
     score < 5
-      ? "bg-red-100 text-red-700 border-red-200"
+      ? "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]"
       : score <= 7
-        ? "bg-amber-100 text-amber-700 border-amber-200"
-        : "bg-green-100 text-green-700 border-green-200";
+        ? "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]"
+        : "bg-[#F0FDF4] text-[#16A34A] border-[#BBF7D0]";
   return <span className={`rounded-full border px-2 py-0.5 text-xs ${color}`}>{score}</span>;
 }
 
@@ -326,78 +337,95 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const startDateLabel = project.startDate ? format(new Date(project.startDate), "MMMM yyyy") : "Unknown start";
+  const startDateLabel = project.startDate ? format(new Date(project.startDate), "MMM yyyy") : "Unknown start";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <Button variant="ghost" className="mb-4 px-0 text-muted-foreground" onClick={() => router.push("/projects")}>
-        <ChevronLeft className="mr-1 h-4 w-4" />
-        Projects
-      </Button>
-
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            {statusBadge(project.status)}
-            <h1 className="text-2xl font-semibold">{project.title}</h1>
-          </div>
-          {project.goal ? <p className="text-sm text-muted-foreground">{project.goal}</p> : null}
-          {project.targetAudience ? <p className="text-sm text-muted-foreground">For: {project.targetAudience}</p> : null}
-        </div>
-        <div className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowMoreMenu((prev) => !prev)}
-            aria-label="More"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-          {showMoreMenu ? (
-            <div className="absolute right-0 z-10 mt-1 w-36 rounded-md border bg-background p-1 text-sm shadow-sm">
-              {["Edit", "Pause/Resume", "Archive project"].map((item) => (
-                <button
-                  key={item}
-                  className="w-full rounded px-2 py-1.5 text-left hover:bg-accent"
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    showToast("Coming soon");
-                  }}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+    <div>
+      <div className="mb-4">
+        <button
+          onClick={() => router.push("/projects")}
+          className="inline-flex items-center gap-1.5 text-[12.5px] text-[#6B7280] transition-colors hover:text-[#111827]"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+          Projects
+        </button>
       </div>
 
-      {project.targetPosts ? (
-        <div className="mb-4">
-          <Progress value={Math.min(100, (project.postsPublished / project.targetPosts) * 100)} className="h-2" />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {project.postsPublished} of {project.targetPosts} posts · Started {startDateLabel}
-          </p>
+      <div className="mb-6 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center gap-2.5">
+              {statusBadge(project.status)}
+              {project.arcType ? <span className="text-[11px] text-[#9CA3AF]">{arcTypeLabel(project.arcType)}</span> : null}
+            </div>
+            <h1 className="text-[20px] font-semibold leading-tight text-[#111827]">{project.title}</h1>
+            {project.goal ? <p className="mt-1 text-[13px] leading-relaxed text-[#6B7280]">{project.goal}</p> : null}
+            {project.targetAudience ? <p className="mt-0.5 text-[12px] text-[#9CA3AF]">For: {project.targetAudience}</p> : null}
+          </div>
+          <div className="relative flex shrink-0 items-center gap-2">
+            <Button onClick={handleGenerate} disabled={generateLoading} size="sm" className="gap-1.5">
+              {generateLoading ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-3.5 w-3.5" />
+                  Generate next post
+                </>
+              )}
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setShowMoreMenu((prev) => !prev)} aria-label="More">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+            {showMoreMenu ? (
+              <div className="absolute right-0 top-9 z-10 mt-1 w-36 rounded-md border border-[#E5E7EB] bg-white p-1 text-sm shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+                {["Edit", "Pause/Resume", "Archive project"].map((item) => (
+                  <button
+                    key={item}
+                    className="w-full rounded px-2 py-1.5 text-left hover:bg-[#F3F4F6]"
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      showToast("Coming soon");
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
-      ) : (
-        <p className="mb-4 text-sm text-muted-foreground">{project.postsPublished} posts published</p>
-      )}
 
-      <Button className="mb-4 w-full sm:w-auto" onClick={handleGenerate} disabled={generateLoading}>
-        {generateLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-        Generate next post
-      </Button>
+        {project.targetPosts ? (
+          <div className="mt-4 border-t border-[#F3F4F6] pt-4">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[12px] text-[#6B7280]">
+                {project.postsPublished} of {project.targetPosts} posts published
+              </span>
+              {project.startDate ? <span className="text-[12px] text-[#9CA3AF]">Started {startDateLabel}</span> : null}
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+              <div
+                className="h-full rounded-full bg-[#2563EB] transition-all"
+                style={{ width: `${Math.min((project.postsPublished / project.targetPosts) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
 
-      <div className="mt-6 flex border-b">
+      <div className="-mt-1 mb-5 flex border-b border-[#E5E7EB]">
         {(["Posts", "Topics", "Settings"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "border-b-2 -mb-px px-4 py-2 text-sm font-medium transition-colors",
+              "border-b-2 -mb-px px-4 py-2.5 text-[13.5px] font-medium transition-colors",
               activeTab === tab
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                ? "border-[#2563EB] text-[#2563EB]"
+                : "border-transparent text-[#6B7280] hover:text-[#374151]",
             )}
           >
             {tab}
@@ -406,29 +434,36 @@ export default function ProjectDetailPage() {
       </div>
 
       {activeTab === "Posts" ? (
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
           {project.recentPosts.length === 0 ? (
-            <div className="py-16 text-center">
-              <FileText className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-              <p className="font-medium">No posts published yet</p>
-              <p className="text-sm text-muted-foreground">Generate your first post for this project above.</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="mb-3 h-8 w-8 text-[#D1D5DB]" />
+              <p className="text-[13.5px] font-medium text-[#374151]">No posts yet</p>
+              <p className="mt-0.5 text-[12px] text-[#9CA3AF]">Generate your first post for this project above</p>
             </div>
           ) : (
             project.recentPosts.map((post, index) => {
               const position = Math.max(1, project.postsPublished - index);
               const firstLine = post.contentSnapshot.split("\n")[0] ?? "";
               return (
-                <div key={post.id} className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
-                  <span className="w-10 font-mono text-muted-foreground">#{position}</span>
-                  <span className="w-28 text-muted-foreground">
-                    {format(new Date(post.publishedAt ?? post.scheduledAt), "MMM d, yyyy")}
+                <div
+                  key={post.id}
+                  className="-mx-4 flex items-center gap-3 border-b border-[#F3F4F6] px-4 py-3 transition-colors last:border-0 hover:bg-[#FAFAFA]"
+                >
+                  <span className="w-6 shrink-0 font-mono text-[12px] text-[#9CA3AF]">#{position}</span>
+                  <span className="w-20 shrink-0 text-[12px] text-[#9CA3AF]">
+                    {post.publishedAt ? format(new Date(post.publishedAt), "MMM d") : "—"}
                   </span>
-                  <span className="max-w-xs truncate md:max-w-md">{firstLine}</span>
+                  <span className="flex-1 truncate text-[13px] text-[#374151]">{firstLine}</span>
                   <span className="ml-auto">{voiceBadge(post.voiceScore)}</span>
                   {post.status === "published" ? (
-                    <Badge variant="secondary">Published</Badge>
+                    <Badge variant="success" className="shrink-0 text-[11px]">
+                      published
+                    </Badge>
                   ) : (
-                    <Badge className="border-amber-200 bg-amber-100 text-amber-800">{post.status}</Badge>
+                    <Badge variant="warning" className="shrink-0 text-[11px]">
+                      {post.status}
+                    </Badge>
                   )}
                 </div>
               );
@@ -439,24 +474,26 @@ export default function ProjectDetailPage() {
 
       {activeTab === "Topics" ? (
         <div className="mt-4 space-y-6">
-          <div className="space-y-3">
+          <div className="space-y-3 rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
             {project.linkedTopics.map((topic) => (
-              <div key={topic.topicSubscriptionId} className="rounded-lg border p-4">
+              <div key={topic.topicSubscriptionId} className="space-y-3 rounded-lg border border-[#E5E7EB] bg-white p-4">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="font-medium">{topic.topicLabel}</p>
-                  <button className="text-xs text-muted-foreground hover:underline" onClick={() => unlinkTopic(topic.topicSubscriptionId)}>
-                    Unlink ×
+                  <p className="text-[13.5px] font-medium text-[#111827]">{topic.topicLabel}</p>
+                  <button className="text-[12px] text-[#9CA3AF] hover:text-[#DC2626]" onClick={() => unlinkTopic(topic.topicSubscriptionId)}>
+                    ×
                   </button>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="mr-1 text-xs text-muted-foreground">Priority:</span>
+                  <span className="mr-1 text-[12px] text-[#6B7280]">Priority:</span>
                   {[1, 2, 3, 4, 5].map((weight) => (
                     <button
                       key={weight}
                       onClick={() => handlePriorityChange(topic.topicSubscriptionId, weight)}
                       className={cn(
                         "h-6 w-6 rounded border text-[11px]",
-                        topic.priorityWeight === weight ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent",
+                        topic.priorityWeight === weight
+                          ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
+                          : "border-[#E5E7EB] text-[#6B7280] hover:bg-[#F3F4F6]",
                       )}
                     >
                       {weight}
@@ -465,17 +502,20 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
             ))}
-            {project.linkedTopics.length === 0 ? <p className="text-sm text-muted-foreground">No linked topics yet.</p> : null}
+            {project.linkedTopics.length === 0 ? <p className="text-sm text-[#6B7280]">No linked topics yet.</p> : null}
             <div>
-              <Button variant="outline" size="sm" onClick={() => setShowLinkTopic((prev) => !prev)}>
-                + Link topic
-              </Button>
+              <button
+                onClick={() => setShowLinkTopic((prev) => !prev)}
+                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+              >
+                <Plus className="h-4 w-4" />+ Link topic
+              </button>
               {showLinkTopic ? (
-                <div className="mt-2 w-full max-w-sm rounded-md border bg-background p-1">
+                <div className="mt-2 w-full max-w-sm rounded-md border border-[#E5E7EB] bg-white p-1">
                   {availableToLink.map((topic) => (
                     <button
                       key={topic.id}
-                      className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-[#F3F4F6]"
                       onClick={() => linkTopic(topic.id)}
                     >
                       {topic.topicLabel}
@@ -525,6 +565,7 @@ export default function ProjectDetailPage() {
 
       {activeTab === "Settings" ? (
         <div className="mt-4 space-y-4">
+          <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
           <div className="space-y-2">
             <label className="text-sm font-medium">Project name</label>
             <Input value={settingsForm.title} onChange={(e) => setSettingsForm((prev) => ({ ...prev, title: e.target.value }))} />
@@ -677,6 +718,7 @@ export default function ProjectDetailPage() {
                 </Button>
               </div>
             )}
+          </div>
           </div>
         </div>
       ) : null}
