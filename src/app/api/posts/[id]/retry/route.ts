@@ -44,16 +44,10 @@ export async function POST(
     // Reset to publishing state
     await db.update(posts).set({ status: "publishing", failureReason: null }).where(eq(posts.id, id));
 
-    const draft = await db.query.draftQueue.findFirst({
-      where: eq(draftQueue.id, post.draftId),
-    });
-    const articleUrl = draft?.sourceUrls?.[0] ?? null;
-
     const result = await publishToLinkedIn({
       accessToken: token.accessToken,
       personUrn: token.personUrn,
       text: post.contentSnapshot,
-      articleUrl,
     });
 
     if (!result.success) {

@@ -126,9 +126,12 @@ Article title: ${input.title}
 Article summary: ${input.summary}
 Article URL: ${input.url}
 
-DO NOT include the source URL in the post text. The article will be
-attached as a link preview automatically when published. Write the
-post body only - no URLs, no "Source:" lines at the end.
+SOURCE ATTRIBUTION RULE:
+Do not include any URLs in the post.
+If you reference the source, use plain text only - the publication name or author name.
+Example: "Via MIT Technology Review" or "From a recent Andreessen Horowitz piece"
+Keep attribution brief (max 5 words) and only include it if it genuinely adds
+credibility. Never end the post with a bare URL.
 
 Return JSON with exactly this shape, no other text:
 {

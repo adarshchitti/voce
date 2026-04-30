@@ -14,6 +14,12 @@ export async function publishToLinkedIn({
   articleUrl?: string | null
   articleTitle?: string | null
 }): Promise<{ success: true; postId: string } | { success: false; error: string }> {
+  void articleUrl;
+  void articleTitle;
+  // NOTE: No link preview or article attachment included intentionally.
+  // LinkedIn penalises external links ~60% reach reduction as of 2026.
+  // Source URLs are stored in DB (draft_queue.source_urls, posts) but never published.
+  // See STAGE2_BUILD_NOTES.md — link penalty fix, April 2026.
   const postBody: Record<string, unknown> = {
     author: personUrn,
     commentary: text,
@@ -26,15 +32,6 @@ export async function publishToLinkedIn({
     lifecycleState: "PUBLISHED",
     isReshareDisabledByAuthor: false,
   };
-
-  if (articleUrl) {
-    postBody.content = {
-      article: {
-        source: articleUrl,
-        title: articleTitle ?? 'Read more',
-      },
-    };
-  }
 
   const response = await fetch(`${LINKEDIN_API_BASE}/rest/posts`, {
     method: "POST",
