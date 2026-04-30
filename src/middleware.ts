@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getAuthSecretSync, getCronSecretSync } from "@/lib/auth";
+import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/linkedin", "/api/auth/linkedin/callback"];
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/api/auth/login", "/api/auth/linkedin", "/api/auth/linkedin/callback"];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  // Always refresh Supabase session first (required by @supabase/ssr)
+  const { supabaseResponse } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith('/api/cron/')) {
@@ -12,11 +15,11 @@ export function middleware(request: NextRequest) {
     if (auth !== `Bearer ${getCronSecretSync()}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.next();
+    return supabaseResponse;
   }
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
+    return supabaseResponse;
   }
 
   const session = request.cookies.get("session");
@@ -24,7 +27,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  return NextResponse.next();
+  return supabaseResponse;
 }
 
 export const config = {

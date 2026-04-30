@@ -11,6 +11,7 @@ import {
   FolderKanban,
   Inbox,
   Loader2,
+  LogOut,
   PenLine,
   Plus,
   Settings,
@@ -159,6 +160,15 @@ export default function Sidebar({ mobileOnly = false }: { mobileOnly?: boolean }
           <Settings className="h-[15px] w-[15px] text-[#6B7280]" />
           Settings
         </Button>
+        <form action="/api/auth/signout" method="POST">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-normal text-[#6B7280] transition-colors hover:bg-[#F3F4F6] hover:text-[#374151]"
+          >
+            <LogOut className="h-[15px] w-[15px]" />
+            Sign out
+          </button>
+        </form>
         <Button variant="ghost" className="h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[12px] font-normal text-[#6B7280] hover:bg-[#F3F4F6]" onClick={() => router.push("/settings")}>
           <span className={cn("h-2 w-2 rounded-full", linkedinFooter.dot)} />
           {linkedinFooter.label}
