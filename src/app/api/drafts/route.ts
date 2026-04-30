@@ -1,11 +1,12 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, draftQueue, researchItems } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const url = new URL(request.url);
     const status = url.searchParams.get("status") ?? "pending";
     const limit = Number(url.searchParams.get("limit") ?? "20");

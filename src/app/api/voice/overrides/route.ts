@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function PATCH(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as {
       userBannedWords?: string[];
       userNotes?: string;

@@ -11,7 +11,7 @@ import {
   topicSubscriptions,
   voiceProfiles,
 } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { fetchTavilyItems } from "@/lib/research/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
@@ -88,7 +88,8 @@ function getMatchedPriorityWeight(input: {
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id: projectId } = await params;
 
     const project = await db.query.contentSeries.findFirst({

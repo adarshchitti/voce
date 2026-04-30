@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { topicSubscriptions } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const topics = await db.query.topicSubscriptions.findMany({ where: eq(topicSubscriptions.userId, userId) });
     return Response.json({ topics });
   } catch {
@@ -15,7 +16,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as {
       topicLabel?: string;
       tavilyQuery?: string;
@@ -42,7 +44,8 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "id is required" }, { status: 400 });
 
@@ -74,7 +77,8 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return Response.json({ error: "id is required" }, { status: 400 });
     await db.delete(topicSubscriptions).where(and(eq(topicSubscriptions.id, id), eq(topicSubscriptions.userId, userId)));

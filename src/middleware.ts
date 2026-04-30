@@ -1,35 +1,33 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { getAuthSecretSync, getCronSecretSync } from "@/lib/auth";
 import { updateSession } from "@/lib/supabase/middleware";
-
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/api/auth/login", "/api/auth/linkedin", "/api/auth/linkedin/callback"];
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // Always refresh Supabase session first (required by @supabase/ssr)
-  const { supabaseResponse } = await updateSession(request);
-  const { pathname } = request.nextUrl;
+  const publicPaths = ["/login", "/auth/callback", "/api/cron/"];
+  const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
 
-  if (pathname.startsWith('/api/cron/')) {
-    const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${getCronSecretSync()}`) {
+  const { supabaseResponse, user } = await updateSession(request);
+
+  if (request.nextUrl.pathname.startsWith("/api/cron/")) {
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return supabaseResponse;
   }
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublic) {
     return supabaseResponse;
   }
 
-  const session = request.cookies.get("session");
-  if (!session || session.value !== getAuthSecretSync()) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (!user) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
   }
 
   return supabaseResponse;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

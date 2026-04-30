@@ -1,11 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as { editedText?: string };
     const editedText = body.editedText ?? "";

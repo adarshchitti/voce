@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, rejectionReasons, researchItems } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 function inferStructure(text: string): string {
   if (text.match(/^\d+\./m)) return "numbered_list";
@@ -14,7 +14,8 @@ function inferStructure(text: string): string {
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as { reasonCode?: string; freeText?: string };
     if (!body.reasonCode) return Response.json({ error: "reasonCode is required" }, { status: 400 });

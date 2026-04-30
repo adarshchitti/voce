@@ -1,11 +1,12 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const [row] = await db
       .select({ value: sql<number>`count(*)` })
       .from(draftQueue)

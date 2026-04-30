@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, seriesTopicSubscriptions, topicSubscriptions } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { getProjectLinkedTopics, getProjectPostStats } from "@/lib/projects";
 
 type CreateProjectBody = {
@@ -49,7 +49,8 @@ function toProjectResponse(
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const projects = await db.query.contentSeries.findMany({
       where: eq(contentSeries.userId, userId),
     });
@@ -81,7 +82,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as CreateProjectBody;
     if (!body.title?.trim()) {
       return Response.json({ error: "title is required" }, { status: 400 });

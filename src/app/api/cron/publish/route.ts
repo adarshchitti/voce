@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { posts, draftQueue, linkedinTokens, cronRuns, researchItems } from "@/lib/db/schema";
 import { eq, and, lte } from "drizzle-orm";
-import { USER_ID } from "@/lib/constants";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { publishToLinkedIn } from "@/lib/linkedin/publish";
 import { getCronSecret } from "@/lib/linkedin/oauth";
 
@@ -17,11 +17,14 @@ export async function GET(request: Request) {
   const errors: string[] = [];
 
   try {
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
+
     // Find all scheduled posts due for publishing
     const due = await db
       .select()
       .from(posts)
-      .where(and(eq(posts.userId, USER_ID), eq(posts.status, "scheduled"), lte(posts.scheduledAt, new Date())));
+      .where(and(eq(posts.userId, userId), eq(posts.status, "scheduled"), lte(posts.scheduledAt, new Date())));
 
     for (const post of due) {
       // Set to 'publishing' to prevent double-publish on cron overlap
@@ -29,13 +32,13 @@ export async function GET(request: Request) {
 
       try {
         const token = await db.query.linkedinTokens.findFirst({
-          where: eq(linkedinTokens.userId, USER_ID),
+          where: eq(linkedinTokens.userId, userId),
         });
 
         if (!token || token.status !== "active") {
           const isExpired = !token || token.tokenExpiry < new Date();
           if (token && isExpired) {
-            await db.update(linkedinTokens).set({ status: "expired" }).where(eq(linkedinTokens.userId, USER_ID));
+            await db.update(linkedinTokens).set({ status: "expired" }).where(eq(linkedinTokens.userId, userId));
           }
           await db
             .update(posts)
@@ -87,7 +90,7 @@ export async function GET(request: Request) {
         if (!result.success) {
           // Handle token expiry detected at publish time
           if (result.error === "TOKEN_EXPIRED") {
-            await db.update(linkedinTokens).set({ status: "expired" }).where(eq(linkedinTokens.userId, USER_ID));
+            await db.update(linkedinTokens).set({ status: "expired" }).where(eq(linkedinTokens.userId, userId));
           }
           await db
             .update(posts)

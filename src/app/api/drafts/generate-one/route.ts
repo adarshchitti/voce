@@ -1,14 +1,15 @@
 import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons, researchItems, topicSubscriptions, voiceProfiles } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
 export async function POST() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
 
     const subscriptions = await db
       .select()

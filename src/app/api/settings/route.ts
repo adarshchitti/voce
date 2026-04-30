@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { linkedinTokens, userSettings } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 const defaults = {
   cadenceMode: "daily",
@@ -29,7 +29,8 @@ const schedulingPreferencesSchema = z.object({
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     let settings = await db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) });
     if (!settings) {
       const [created] = await db.insert(userSettings).values({ userId, ...defaults }).returning();
@@ -45,7 +46,8 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as Partial<typeof userSettings.$inferInsert>;
     await db.update(userSettings).set({ ...body, updatedAt: new Date() }).where(eq(userSettings.userId, userId));
     return Response.json({ success: true });
@@ -56,7 +58,8 @@ export async function PUT(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = await request.json();
     const parsed = schedulingPreferencesSchema.safeParse(body);
 

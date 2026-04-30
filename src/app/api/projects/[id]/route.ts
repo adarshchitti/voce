@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { getProjectLinkedTopics, getProjectPostStats, getRecentProjectPosts } from "@/lib/projects";
 
 type UpdateProjectBody = Partial<{
@@ -61,7 +61,8 @@ function toProjectDetail(
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const project = await db.query.contentSeries.findFirst({
       where: and(eq(contentSeries.id, id), eq(contentSeries.userId, userId)),
@@ -84,7 +85,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as UpdateProjectBody;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -120,7 +122,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     await db
       .update(contentSeries)

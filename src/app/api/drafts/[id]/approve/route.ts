@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, posts, researchItems, userSettings } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { calculateScheduledAt } from "@/lib/scheduler";
 
 function inferStructure(text: string): string {
@@ -59,7 +59,8 @@ Return plain text only, no JSON, no bullet points.`,
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const draft = await db.query.draftQueue.findFirst({ where: and(eq(draftQueue.id, id), eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")) });
     if (!draft) return Response.json({ error: "Draft not found" }, { status: 404 });

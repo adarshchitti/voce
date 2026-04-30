@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { extractVoicePatterns } from "@/lib/ai/extract-voice";
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
     return Response.json({ voiceProfile });
   } catch {
@@ -16,7 +17,8 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as { rawDescription?: string; samplePosts?: string[]; personalContext?: string };
     const samplePosts = body.samplePosts ?? [];
     const existing = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });

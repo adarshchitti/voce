@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, seriesTopicSubscriptions, topicSubscriptions } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 type AddTopicBody = { topicSubscriptionId?: string; priorityWeight?: number };
 type RemoveTopicBody = { topicSubscriptionId?: string };
@@ -15,7 +15,8 @@ async function ensureProjectOwner(seriesId: string, userId: string) {
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as AddTopicBody;
     if (!body.topicSubscriptionId || typeof body.priorityWeight !== "number") {
@@ -48,7 +49,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as RemoveTopicBody;
     if (!body.topicSubscriptionId) {

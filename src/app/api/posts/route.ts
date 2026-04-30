@@ -1,11 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, draftQueue, posts } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET() {
   try {
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const data = await db
       .select({
         id: posts.id,

@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
@@ -9,7 +9,8 @@ import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await request.text();
-    const userId = await requireAuth();
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const { id } = await params;
 
     const draft = await db.query.draftQueue.findFirst({

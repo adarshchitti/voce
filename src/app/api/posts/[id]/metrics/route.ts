@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { OWNER_USER_ID } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { posts } from "@/lib/db/schema";
 
 const schema = z.object({
@@ -13,6 +13,8 @@ const schema = z.object({
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = schema.parse(await request.json());
     const { id } = await params;
 
@@ -25,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .where(
         and(
           eq(posts.id, id),
-          eq(posts.userId, OWNER_USER_ID), // STAGE2: replace with supabase auth.uid()
+          eq(posts.userId, userId),
         ),
       );
 

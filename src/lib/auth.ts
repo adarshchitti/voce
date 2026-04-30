@@ -1,48 +1,31 @@
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { User } from "@supabase/supabase-js";
 
-const SESSION_COOKIE = "session";
-export const OWNER_USER_ID = "owner"; // STAGE2: replace with Supabase auth.uid()
+type AuthenticatedUserResult =
+  | { user: User; userId: string; unauthorized: null }
+  | { user: null; userId: null; unauthorized: NextResponse };
 
-export async function getAuthSecret(): Promise<string> {
-  const value = process.env.AUTH_SECRET;
-  if (!value) {
-    throw new Error("Missing AUTH_SECRET");
+export async function getAuthenticatedUser(): Promise<AuthenticatedUserResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return {
+      user: null,
+      userId: null,
+      unauthorized: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
-  return value;
-}
 
-export async function getCurrentUserId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(SESSION_COOKIE);
-  if (!session?.value) return null;
-  return session.value === (await getAuthSecret()) ? OWNER_USER_ID : null;
+  return { user, userId: user.id, unauthorized: null };
 }
 
 export async function requireAuth(): Promise<string> {
-  const userId = await getCurrentUserId();
+  const { userId } = await getAuthenticatedUser();
   if (!userId) throw new Error("Unauthorized");
   return userId;
-}
-
-export function sessionCookieOptions() {
-  return {
-    name: SESSION_COOKIE,
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  };
-}
-
-export function getAuthSecretSync() {
-  const value = process.env.AUTH_SECRET;
-  if (!value) throw new Error("Missing AUTH_SECRET");
-  return value;
-}
-
-export function getCronSecretSync() {
-  const value = process.env.CRON_SECRET;
-  if (!value) throw new Error("Missing CRON_SECRET");
-  return value;
 }

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { requireAuth } from "@/lib/auth";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -9,7 +9,8 @@ function getClient() {
 
 export async function POST(request: Request) {
   try {
-    await requireAuth();
+    const { unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
     const body = (await request.json()) as { topicLabel?: string };
     if (!body.topicLabel?.trim()) return Response.json({ error: "topicLabel is required" }, { status: 400 });
 

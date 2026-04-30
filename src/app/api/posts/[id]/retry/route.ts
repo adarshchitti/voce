@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { posts, draftQueue, linkedinTokens } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { USER_ID } from "@/lib/constants";
+import { getAuthenticatedUser } from "@/lib/auth";
 import { publishToLinkedIn } from "@/lib/linkedin/publish";
 
 export async function POST(
@@ -12,11 +12,13 @@ export async function POST(
   try {
     const { id } = await params;
     void request;
+    const { userId, unauthorized } = await getAuthenticatedUser();
+    if (unauthorized) return unauthorized;
 
     const post = await db
       .select()
       .from(posts)
-      .where(and(eq(posts.id, id), eq(posts.userId, USER_ID)))
+      .where(and(eq(posts.id, id), eq(posts.userId, userId)))
       .limit(1)
       .then((r) => r[0] ?? null);
 
@@ -29,7 +31,7 @@ export async function POST(
     }
 
     const token = await db.query.linkedinTokens.findFirst({
-      where: eq(linkedinTokens.userId, USER_ID),
+      where: eq(linkedinTokens.userId, userId),
     });
 
     if (!token || token.status !== "active") {
