@@ -145,8 +145,6 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
     ? [...(aiFlags?.words ?? []), ...(aiFlags?.structure ?? []), ...(aiFlags?.voice ?? [])]
     : [];
   const previewText = editedText || currentDraft.draftText;
-  const sourceUrl = currentDraft.sourceUrls?.[0] ?? currentDraft.researchItem?.url;
-  const sourceLabel = currentDraft.researchItem?.title ? "Source article" : "Source article";
   const isNearExpiry = isNearStale(draft.staleAfter);
 
   return (
@@ -223,15 +221,23 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             placeholder="Draft text will appear here..."
           />
 
-          {sourceUrl ? (
+          {draft.sourceUrls?.[0] ? (
             <a
-              href={sourceUrl}
+              href={draft.sourceUrls[0]}
               target="_blank"
               rel="noopener noreferrer"
               className="group inline-flex items-center gap-1.5 text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB]"
             >
-              <ExternalLink className="h-3 w-3" />
-              {sourceLabel}
+              <ExternalLink className="h-3 w-3 group-hover:text-[#2563EB]" />
+              {draft.sourceUrls[0].includes("tavily")
+                ? "Source article"
+                : (() => {
+                    try {
+                      return new URL(draft.sourceUrls[0]).hostname.replace("www.", "");
+                    } catch {
+                      return "Source article";
+                    }
+                  })()}
             </a>
           ) : null}
 
