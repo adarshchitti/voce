@@ -28,9 +28,18 @@ export async function getUsersDueForPublishRun() {
 }
 
 export async function runPublishForPost(postId: string, userId: string): Promise<PublishSingleResult> {
-  const post = await db.query.posts.findFirst({
-    where: and(eq(posts.id, postId), eq(posts.userId, userId), eq(posts.status, "scheduled")),
-  });
+  const post = await db
+    .select({
+      id: posts.id,
+      userId: posts.userId,
+      draftId: posts.draftId,
+      contentSnapshot: posts.contentSnapshot,
+      status: posts.status,
+    })
+    .from(posts)
+    .where(and(eq(posts.id, postId), eq(posts.userId, userId), eq(posts.status, "scheduled")))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
 
   if (!post) return { success: false, postId, error: "Post not found or not scheduled" };
 
