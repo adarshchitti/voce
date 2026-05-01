@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { linkedinTokens } from "@/lib/db/schema";
+import { linkedinTokens, userSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { exchangeCodeForToken, fetchPersonUrn } from "@/lib/linkedin/oauth";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -14,8 +14,10 @@ export async function GET(request: Request) {
 
     const cookieStore = await cookies();
     const cookieState = cookieStore.get("linkedin_oauth_state")?.value;
+    const nextAfterOauth = cookieStore.get("linkedin_oauth_next")?.value ?? "/settings?linkedin=connected";
     if (!cookieState || cookieState !== state) return Response.json({ error: "Invalid OAuth state" }, { status: 400 });
     cookieStore.delete("linkedin_oauth_state");
+    cookieStore.delete("linkedin_oauth_next");
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
 
@@ -33,7 +35,12 @@ export async function GET(request: Request) {
       await db.insert(linkedinTokens).values({ userId, accessToken: tokenData.access_token, personUrn, tokenExpiry: expiry, status: "active" });
     }
 
-    return Response.redirect(new URL("/settings?linkedin=connected", request.url));
+    const settings = await db.query.userSettings.findFirst({
+      where: eq(userSettings.userId, userId),
+      columns: { onboardingCompleted: true },
+    });
+    const destination = settings?.onboardingCompleted ? nextAfterOauth : "/onboarding?step=4";
+    return Response.redirect(new URL(destination, request.url));
   } catch {
     return Response.json({ error: "LinkedIn callback failed" }, { status: 400 });
   }

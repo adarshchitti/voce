@@ -278,6 +278,7 @@ export const userSettings = pgTable("user_settings", {
   // Flag words from the banned words list (delve, leverage etc)
   tellFlagEveryLine: boolean("tell_flag_every_line").notNull().default(true),
   // Flag when every sentence is on its own line (AI accordion)
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

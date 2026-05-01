@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { userSettings } from "@/lib/db/schema";
+import { topicSubscriptions, userSettings } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -28,8 +29,17 @@ export async function GET(request: NextRequest) {
             jitterMinutes: 15,
           })
           .onConflictDoNothing();
+
+        const topics = await db
+          .select({ id: topicSubscriptions.id })
+          .from(topicSubscriptions)
+          .where(eq(topicSubscriptions.userId, user.id))
+          .limit(1);
+
+        const redirectTo = topics.length === 0 ? "/onboarding" : next;
+        return NextResponse.redirect(`${origin}${redirectTo}`);
       }
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${origin}/onboarding`);
     }
   }
 
