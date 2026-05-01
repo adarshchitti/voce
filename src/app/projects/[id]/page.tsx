@@ -572,11 +572,23 @@ export default function ProjectDetailPage() {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Goal</label>
-            <Textarea rows={2} value={settingsForm.goal} onChange={(e) => setSettingsForm((prev) => ({ ...prev, goal: e.target.value }))} />
+            <Textarea
+              rows={2}
+              maxLength={300}
+              value={settingsForm.goal}
+              onChange={(e) => setSettingsForm((prev) => ({ ...prev, goal: e.target.value }))}
+            />
+            <p className="text-xs text-[#6B7280]">Keep it concise — one sentence works best</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Target audience</label>
-            <Textarea rows={2} value={settingsForm.targetAudience} onChange={(e) => setSettingsForm((prev) => ({ ...prev, targetAudience: e.target.value }))} />
+            <Textarea
+              rows={2}
+              maxLength={200}
+              value={settingsForm.targetAudience}
+              onChange={(e) => setSettingsForm((prev) => ({ ...prev, targetAudience: e.target.value }))}
+            />
+            <p className="text-xs text-[#6B7280]">Describe your reader in 1-2 sentences</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Narrative style</label>

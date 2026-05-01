@@ -70,6 +70,105 @@ function formatHookStyle(hookStyle: string | null): string {
   return map[hookStyle] ?? hookStyle;
 }
 
+const HOOK_STYLE_PRESET_OPTIONS: { value: string; label: string }[] = [
+  { value: "question", label: "Opens with a question" },
+  { value: "bold_claim", label: "Opens with a bold claim" },
+  { value: "personal_story", label: "Opens with a personal story" },
+  { value: "data_point", label: "Opens with a data point or stat" },
+  { value: "contrarian", label: "Opens with a contrarian take" },
+];
+
+function HookStyleVoiceRow({
+  hookStyle,
+  onSave,
+}: {
+  hookStyle: string | null;
+  onSave: (value: string) => void | Promise<void>;
+}) {
+  const presetSet = new Set(HOOK_STYLE_PRESET_OPTIONS.map((o) => o.value));
+  const [editing, setEditing] = useState(false);
+  const [preset, setPreset] = useState<string>("__custom__");
+  const [customText, setCustomText] = useState("");
+
+  const startEdit = () => {
+    if (hookStyle && presetSet.has(hookStyle)) {
+      setPreset(hookStyle);
+      setCustomText("");
+    } else {
+      setPreset("__custom__");
+      setCustomText(hookStyle ?? "");
+    }
+    setEditing(true);
+  };
+
+  return (
+    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-[#FAFAFA]">
+      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-[#9CA3AF]">How you open posts</span>
+      <div className="min-w-0 flex-1">
+        {editing ? (
+          <div className="space-y-1.5">
+            <select
+              value={preset}
+              onChange={(e) => setPreset(e.target.value)}
+              className="w-full rounded-md border border-[#2563EB] bg-white px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+            >
+              {HOOK_STYLE_PRESET_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+              <option value="__custom__">Custom (free text)</option>
+            </select>
+            {preset === "__custom__" ? (
+              <input
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder="Describe how you usually open posts"
+                className="w-full rounded-md border border-[#2563EB] px-2 py-1 text-[13px] text-[#374151] outline-none"
+                autoFocus
+              />
+            ) : null}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const v = preset === "__custom__" ? customText.trim() : preset;
+                  await onSave(v);
+                  setEditing(false);
+                }}
+                className="text-[11px] font-medium text-[#2563EB]"
+              >
+                Save
+              </button>
+              <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-[#9CA3AF]">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={cn(
+                "text-[13px] leading-relaxed",
+                hookStyle ? "text-[#374151]" : "text-[#9CA3AF]",
+              )}
+            >
+              {formatHookStyle(hookStyle)}
+            </span>
+            <button
+              type="button"
+              onClick={startEdit}
+              className="flex-shrink-0 text-[11px] text-[#9CA3AF] opacity-0 transition-opacity hover:text-[#2563EB] group-hover:opacity-100"
+            >
+              Edit
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatEmojiStyle(emojiFrequency: string | null | undefined): string {
   const map: Record<string, string> = {
     none: "No emojis",
@@ -86,19 +185,24 @@ function VoiceRow({
   editable,
   multiline,
   onEdit,
+  selectOptions,
+  selectValue,
 }: {
   label: string;
   value: ReactNode;
   editable?: boolean;
   multiline?: boolean;
   onEdit?: (val: string) => void | Promise<void>;
+  selectOptions?: { value: string; label: string }[];
+  selectValue?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(typeof value === "string" ? value : "");
 
   useEffect(() => {
+    if (selectOptions) return;
     if (typeof value === "string") setEditValue(value);
-  }, [value]);
+  }, [value, selectOptions]);
 
   return (
     <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-[#FAFAFA]">
@@ -106,7 +210,20 @@ function VoiceRow({
       <div className="min-w-0 flex-1">
         {editing && editable && onEdit ? (
           <div className="space-y-1.5">
-            {multiline ? (
+            {selectOptions?.length ? (
+              <select
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="w-full rounded-md border border-[#2563EB] bg-white px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+                autoFocus
+              >
+                {selectOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : multiline ? (
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
@@ -151,7 +268,11 @@ function VoiceRow({
               <button
                 type="button"
                 onClick={() => {
-                  setEditValue(typeof value === "string" ? value : "");
+                  if (selectOptions?.length) {
+                    setEditValue(selectValue ?? selectOptions[0]?.value ?? "");
+                  } else {
+                    setEditValue(typeof value === "string" ? value : "");
+                  }
                   setEditing(true);
                 }}
                 className="flex-shrink-0 text-[11px] text-[#9CA3AF] opacity-0 transition-opacity hover:text-[#2563EB] group-hover:opacity-100"
@@ -306,22 +427,28 @@ export default function SettingsPage() {
     return () => observer.disconnect();
   }, []);
 
-  async function persistVoiceAndRefresh(): Promise<boolean> {
+  async function persistVoiceAndRefresh(): Promise<{ ok: boolean; error?: string }> {
     const trimmed = samplePosts.map((p) => p.trim()).filter(Boolean);
     const response = await fetch("/api/voice", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rawDescription, samplePosts: trimmed, personalContext }),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: data.error };
+    }
     const data = await fetch("/api/voice").then((r) => r.json());
     applyVoiceProfileFromApi(data.voiceProfile);
-    return true;
+    return { ok: true };
   }
 
   async function saveVoice() {
-    const ok = await persistVoiceAndRefresh();
-    showToast(ok ? "Voice profile saved" : "Failed to save", ok ? "success" : "error");
+    const result = await persistVoiceAndRefresh();
+    showToast(
+      result.ok ? "Voice profile saved" : (result.error ?? "Failed to save"),
+      result.ok ? "success" : "error",
+    );
   }
 
   function addPost() {
@@ -490,6 +617,10 @@ export default function SettingsPage() {
     neverPatterns?: string[];
     postStructureTemplate?: string;
     emojiNeverOverride?: boolean;
+    hookStyle?: string;
+    paragraphStyle?: string;
+    toneMarkers?: string[];
+    emojiFrequency?: string;
   }) {
     const response = await fetch("/api/voice/overrides", {
       method: "PATCH",
@@ -514,12 +645,15 @@ export default function SettingsPage() {
   }
 
   async function handleReanalyze() {
-    const n = samplePosts.filter((p) => p.trim().length > 50).length;
+    const n = samplePosts.filter((p) => p.trim().length >= 100).length;
     if (n < 3) return;
     setIsExtracting(true);
     try {
-      const ok = await persistVoiceAndRefresh();
-      showToast(ok ? "Posts re-analysed" : "Failed to re-analyse", ok ? "success" : "error");
+      const result = await persistVoiceAndRefresh();
+      showToast(
+        result.ok ? "Posts re-analysed" : (result.error ?? "Failed to re-analyse"),
+        result.ok ? "success" : "error",
+      );
     } finally {
       setIsExtracting(false);
     }
@@ -549,7 +683,7 @@ export default function SettingsPage() {
     }
   }
 
-  const validPostCount = samplePosts.filter((p) => p.trim().length > 50).length;
+  const validPostCount = samplePosts.filter((p) => p.trim().length >= 100).length;
   const sampleCount = Math.max(samplePostCount, validPostCount);
 
   const calibrationUi =
@@ -647,8 +781,31 @@ export default function SettingsPage() {
                         onChange={(e) => updatePost(index, e.target.value)}
                         placeholder="Paste your LinkedIn post here..."
                         rows={4}
+                        maxLength={3000}
                         className="w-full resize-none border-0 bg-white px-3 py-2.5 text-[13px] leading-relaxed text-[#374151] outline-none placeholder:text-[#9CA3AF]"
                       />
+                      {post.length > 0 && post.length < 100 ? (
+                        <p className="text-[11px] text-[#D97706] px-3 pb-2">
+                          Post is too short — add more content for better voice extraction
+                        </p>
+                      ) : null}
+                      <div className="flex items-center justify-between border-t border-[#F3F4F6] bg-[#FAFAFA] px-3 py-1.5">
+                        <span className="text-[11px] text-[#9CA3AF]">
+                          Plain text only · LinkedIn posts work best
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[11px] tabular-nums",
+                            post.length > 3000
+                              ? "text-[#DC2626]"
+                              : post.length < 100
+                                ? "text-[#9CA3AF]"
+                                : "text-[#16A34A]",
+                          )}
+                        >
+                          {post.length} / 3000
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -690,6 +847,7 @@ export default function SettingsPage() {
                   <p className="text-[12px] text-[#9CA3AF]">Short plain-English description of your writing style</p>
                   <textarea
                     rows={3}
+                    maxLength={3000}
                     value={rawDescription}
                     onChange={(e) => setRawDescription(e.target.value)}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
@@ -725,6 +883,7 @@ export default function SettingsPage() {
                   <p className="text-[12px] text-[#9CA3AF]">Additional instructions for style constraints</p>
                   <textarea
                     rows={2}
+                    maxLength={500}
                     value={userNotes}
                     onChange={(e) => setUserNotes(e.target.value)}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
@@ -735,6 +894,7 @@ export default function SettingsPage() {
                   <p className="text-[12px] text-[#9CA3AF]">Used by the personal-angle draft enhancement</p>
                   <textarea
                     rows={2}
+                    maxLength={500}
                     value={personalContext}
                     onChange={(e) => setPersonalContext(e.target.value)}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
@@ -754,7 +914,14 @@ export default function SettingsPage() {
                       label="Writing style"
                       value={formatWritingStyle({ avgSentenceLengthWords, avgWordsPerPost, paragraphStyle })}
                     />
-                    <VoiceRow label="How you open posts" value={formatHookStyle(hookStyle)} />
+                    <HookStyleVoiceRow
+                      hookStyle={hookStyle}
+                      onSave={async (v) => {
+                        const next = v || null;
+                        setHookStyle(next);
+                        await patchVoiceOverrides({ hookStyle: v });
+                      }}
+                    />
                     <VoiceRow
                       label="Post structure"
                       value={postStructureTemplate}
@@ -805,8 +972,32 @@ export default function SettingsPage() {
                         }
                       />
                     ) : null}
-                    {toneMarkers.length > 0 ? <VoiceRow label="Tone" value={toneMarkers.join(", ")} /> : null}
-                    <VoiceRow label="Emoji usage" value={formatEmojiStyle(emojiFrequency)} />
+                    <VoiceRow
+                      label="Tone"
+                      value={toneMarkers.length ? toneMarkers.join(", ") : ""}
+                      editable
+                      onEdit={async (val) => {
+                        const next = val.split(",").map((t) => t.trim()).filter(Boolean);
+                        setToneMarkers(next);
+                        await patchVoiceOverrides({ toneMarkers: next });
+                      }}
+                    />
+                    <VoiceRow
+                      label="Emoji usage"
+                      value={formatEmojiStyle(emojiFrequency)}
+                      editable
+                      selectOptions={[
+                        { value: "none", label: "No emojis" },
+                        { value: "rare", label: "Rarely uses emojis" },
+                        { value: "occasional", label: "Occasionally uses emojis" },
+                        { value: "frequent", label: "Frequently uses emojis" },
+                      ]}
+                      selectValue={emojiFrequency ?? "none"}
+                      onEdit={async (val) => {
+                        setEmojiFrequency(val);
+                        await patchVoiceOverrides({ emojiFrequency: val });
+                      }}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

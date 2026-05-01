@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AI_TELL_BLOCKLIST_PROMPT } from "@/lib/ai/ai-tells";
+import { sanitiseGenerationPromptInputs } from "@/lib/ai/prompts";
+import { sanitiseShortText, FIELD_LIMITS } from "@/lib/sanitise";
 
 const MAX_POST_CHARS = 3000;
 
@@ -34,18 +36,28 @@ export async function generateDraft(input: {
   instruction?: string;
   projectContext?: string | null;
 }) {
+  // SECURITY: All user content must be sanitised before injection.
+  // Do not remove these calls — they prevent prompt injection attacks.
+  const safe = sanitiseGenerationPromptInputs({
+    userNotes: input.userNotes,
+    rawDescription: input.rawDescription,
+    instruction: input.instruction,
+    userBannedWords: input.userBannedWords,
+    projectContext: input.projectContext,
+  });
+
   const voiceRejections = input.rejections
     .filter((r) => r.rejectionType == null || r.rejectionType === "voice")
     .slice(0, 10);
   const rejectionText =
     voiceRejections.length >= 3
       ? `\n\nVOICE PATTERNS TO AVOID (from rejected drafts):\n${voiceRejections
-          .map((r) => `- ${r.reasonCode}: "${r.freeText ?? ""}"`)
+          .map((r) => `- ${r.reasonCode}: "${sanitiseShortText(r.freeText ?? "", FIELD_LIMITS.userNotes)}"`)
           .join("\n")}`
       : "";
 
-  const instructionSuffix = input.instruction
-    ? `\n\nADDITIONAL INSTRUCTION FROM USER: ${input.instruction}`
+  const instructionSuffix = safe.instruction
+    ? `\n\nADDITIONAL INSTRUCTION FROM USER: ${safe.instruction}`
     : "";
 
   const hasStructuredFields = input.sentenceLength || input.hookStyle || input.pov;
@@ -57,8 +69,8 @@ export async function generateDraft(input: {
 - Point of view: ${input.pov ?? "first_person_singular"}
 - Tone: ${input.toneMarkers?.join(", ") ?? "professional, direct"}
 - Formatting: ${input.formattingStyle ?? "emoji_light"}
-- Additional notes: ${input.userNotes ?? "none"}
-- Never use these words/phrases: ${input.userBannedWords?.join(", ") ?? "none"}`
+- Additional notes: ${safe.userNotes ?? "none"}
+- Never use these words/phrases: ${safe.userBannedWords?.join(", ") ?? "none"}`
     : JSON.stringify(input.extractedPatterns);
   const voiceSection = hasGuidance
     ? `VOICE PROFILE:
@@ -107,9 +119,9 @@ Legacy categorical context:
 - Formatting: ${input.formattingStyle ?? "emoji_light"}
 
 Raw voice description from the creator:
-${input.rawDescription}
+${safe.rawDescription}
 
-${input.projectContext?.trim() ? `---\n${input.projectContext}\n---` : ""}
+${safe.projectContext?.trim() ? `---\n${safe.projectContext}\n---` : ""}
 
 STRICT RULES:
 - Never exceed 3000 characters total (LinkedIn's hard limit)
@@ -122,9 +134,9 @@ ${AI_TELL_BLOCKLIST_PROMPT}`,
         role: "user",
         content: `Write a LinkedIn post based on this article.
 
-Article title: ${input.title}
-Article summary: ${input.summary}
-Article URL: ${input.url}
+Article title: ${sanitiseShortText(input.title, 500)}
+Article summary: ${sanitiseShortText(input.summary, FIELD_LIMITS.samplePost)}
+Article URL: ${sanitiseShortText(input.url, 2000)}
 
 SOURCE ATTRIBUTION RULE:
 Do not include any URLs in the post.

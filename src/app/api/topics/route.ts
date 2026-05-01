@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { topicSubscriptions } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { sanitiseTavilyQuery, sanitiseTopicLabel } from "@/lib/sanitise";
 
 export async function GET() {
   try {
@@ -24,6 +25,12 @@ export async function POST(request: Request) {
       sourceUrls?: string[];
       priorityWeight?: number;
     };
+    if (body.topicLabel) {
+      body.topicLabel = sanitiseTopicLabel(body.topicLabel);
+    }
+    if (body.tavilyQuery) {
+      body.tavilyQuery = sanitiseTavilyQuery(body.tavilyQuery);
+    }
     if (!body.topicLabel || !body.tavilyQuery) return Response.json({ error: "topicLabel and tavilyQuery are required" }, { status: 400 });
     const [topic] = await db
       .insert(topicSubscriptions)
@@ -57,8 +64,8 @@ export async function PATCH(request: Request) {
     };
 
     const updateValues: Partial<typeof topicSubscriptions.$inferInsert> = {};
-    if (body.topicLabel !== undefined) updateValues.topicLabel = body.topicLabel;
-    if (body.tavilyQuery !== undefined) updateValues.tavilyQuery = body.tavilyQuery;
+    if (body.topicLabel !== undefined) updateValues.topicLabel = sanitiseTopicLabel(body.topicLabel);
+    if (body.tavilyQuery !== undefined) updateValues.tavilyQuery = sanitiseTavilyQuery(body.tavilyQuery);
     if (body.sourceUrls !== undefined) updateValues.sourceUrls = body.sourceUrls;
     if (body.priorityWeight !== undefined) updateValues.priorityWeight = body.priorityWeight;
 

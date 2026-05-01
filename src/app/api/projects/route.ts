@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { contentSeries, seriesTopicSubscriptions, topicSubscriptions } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getProjectLinkedTopics, getProjectPostStats } from "@/lib/projects";
+import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
 type CreateProjectBody = {
   title?: string;
@@ -89,14 +90,18 @@ export async function POST(request: Request) {
       return Response.json({ error: "title is required" }, { status: 400 });
     }
     const title = body.title.trim();
+    const goal = body.goal?.trim() ? sanitiseShortText(body.goal, FIELD_LIMITS.goal) : null;
+    const targetAudience = body.targetAudience?.trim()
+      ? sanitiseShortText(body.targetAudience, FIELD_LIMITS.targetAudience)
+      : null;
     const created = await db.transaction(async (tx) => {
       const [project] = await tx
         .insert(contentSeries)
         .values({
           userId,
           title,
-          goal: body.goal ?? null,
-          targetAudience: body.targetAudience ?? null,
+          goal,
+          targetAudience,
           arcType: body.arcType ?? null,
           targetPosts: body.targetPosts ?? null,
           startDate: body.startDate ?? null,

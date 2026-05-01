@@ -241,22 +241,26 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             </a>
           ) : null}
 
-          <div className="flex gap-2">
-            <input
-              value={regenInstruction}
-              onChange={(e) => setRegenInstruction(e.target.value)}
-              placeholder="Regeneration instruction (optional)..."
-              className="h-8 flex-1 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] text-[#374151] placeholder:text-[#9CA3AF] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
-              onKeyDown={(e) => e.key === "Enter" && regenInstruction && !isRegenerating && handleRegenerate()}
-            />
-            <button
-              onClick={handleRegenerate}
-              disabled={!regenInstruction || isRegenerating}
-              className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
-            >
-              {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Regenerate
-            </button>
+          <div className="flex flex-col gap-1">
+            <div className="flex gap-2">
+              <input
+                value={regenInstruction}
+                onChange={(e) => setRegenInstruction(e.target.value)}
+                placeholder="Regeneration instruction (optional)..."
+                maxLength={300}
+                className="h-8 flex-1 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] text-[#374151] placeholder:text-[#9CA3AF] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                onKeyDown={(e) => e.key === "Enter" && regenInstruction && !isRegenerating && handleRegenerate()}
+              />
+              <button
+                onClick={handleRegenerate}
+                disabled={!regenInstruction || isRegenerating}
+                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
+              >
+                {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Regenerate
+              </button>
+            </div>
+            <p className="text-right text-[11px] tabular-nums text-[#9CA3AF]">{regenInstruction.length} / 300</p>
           </div>
 
           <button

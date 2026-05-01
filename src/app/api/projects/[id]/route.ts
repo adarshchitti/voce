@@ -3,11 +3,13 @@ import { db } from "@/lib/db";
 import { contentSeries } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getProjectLinkedTopics, getProjectPostStats, getRecentProjectPosts } from "@/lib/projects";
+import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
 type UpdateProjectBody = Partial<{
   title: string;
   goal: string;
   targetAudience: string;
+  description: string | null;
   arcType: string;
   targetPosts: number | null;
   startDate: string | null;
@@ -89,11 +91,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as UpdateProjectBody;
+    if (body.goal !== undefined) {
+      body.goal = sanitiseShortText(body.goal, FIELD_LIMITS.goal);
+    }
+    if (body.targetAudience !== undefined) {
+      body.targetAudience = sanitiseShortText(body.targetAudience, FIELD_LIMITS.targetAudience);
+    }
+    if (body.description !== undefined && body.description !== null) {
+      body.description = sanitiseShortText(body.description, FIELD_LIMITS.seriesDescription);
+    }
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     const fields = [
       "title",
       "goal",
       "targetAudience",
+      "description",
       "arcType",
       "targetPosts",
       "startDate",

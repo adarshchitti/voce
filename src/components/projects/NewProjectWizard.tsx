@@ -217,10 +217,12 @@ export default function NewProjectWizard({
               <label className="text-sm font-medium">Goal</label>
               <Textarea
                 rows={2}
+                maxLength={300}
                 placeholder="e.g. Generate inbound leads from CTOs exploring AI agents"
                 value={formData.goal}
                 onChange={(e) => setFormData((prev) => ({ ...prev, goal: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground">Keep it concise — one sentence works best</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -256,10 +258,12 @@ export default function NewProjectWizard({
               <label className="text-sm font-medium">Target audience</label>
               <Textarea
                 rows={3}
+                maxLength={200}
                 placeholder="e.g. CTOs and senior engineers at Series A-C startups exploring production AI systems"
                 value={formData.targetAudience}
                 onChange={(e) => setFormData((prev) => ({ ...prev, targetAudience: e.target.value }))}
               />
+              <p className="text-xs text-muted-foreground">Describe your reader in 1-2 sentences</p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Narrative style</label>

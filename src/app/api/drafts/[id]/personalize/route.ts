@@ -5,6 +5,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
+import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -48,11 +49,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
+    const safePersonalContext = sanitiseShortText(personalContext, FIELD_LIMITS.personalContext);
     const personalInstruction = `
 Add a genuine personal angle to this post using the author's background below.
 
 AUTHOR BACKGROUND:
-${personalContext}
+${safePersonalContext}
 
 Rules:
 - Only connect to experiences that genuinely relate to the topic

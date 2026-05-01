@@ -4,6 +4,7 @@ import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/li
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
+import { sanitiseInstruction } from "@/lib/sanitise";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,7 +12,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (unauthorized) return unauthorized;
     const { id } = await params;
     const body = (await request.json()) as { instruction?: string };
-    if (!body.instruction?.trim()) return Response.json({ error: "instruction is required" }, { status: 400 });
+    const instruction = body.instruction ? sanitiseInstruction(body.instruction) : undefined;
+    if (!instruction?.trim()) return Response.json({ error: "instruction is required" }, { status: 400 });
     const original = await db.query.draftQueue.findFirst({ where: and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)) });
     if (!original || !original.researchItemId) return Response.json({ error: "Draft not found" }, { status: 404 });
     const researchItem = await db.query.researchItems.findFirst({ where: eq(researchItems.id, original.researchItemId) });
@@ -40,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       summary: researchItem.summary ?? "",
       url: researchItem.url,
       rejections,
-      instruction: body.instruction,
+      instruction,
     });
     const voiceResult = voiceProfile?.calibrated ? await scoreVoiceDetailed({ voiceProfile, draftText: generated.draftText }) : null;
     const voiceScore = voiceResult?.score ?? null;
@@ -60,7 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
       .returning();
     await db.update(draftQueue).set({ status: "rejected" }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
-    await db.insert(rejectionReasons).values({ userId, draftId: id, reasonCode: "other", freeText: `Regenerated: ${body.instruction}`, rejectionType: "other" });
+    await db.insert(rejectionReasons).values({ userId, draftId: id, reasonCode: "other", freeText: `Regenerated: ${instruction}`, rejectionType: "other" });
     return Response.json({ draft: created });
   } catch {
     return Response.json({ error: "Failed to regenerate draft" }, { status: 400 });
