@@ -1,9 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, posts, researchItems, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { calculateScheduledAt } from "@/lib/scheduler";
+import type { publishPostTask } from "@/trigger/publish";
 
 function inferStructure(text: string): string {
   if (text.match(/^\d+\./m)) return "numbered_list";
@@ -75,13 +77,27 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     });
 
     await db.update(draftQueue).set({ status: "approved", scheduledFor: scheduledAt }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
-    await db.insert(posts).values({
-      userId,
-      draftId: id,
-      contentSnapshot: draft.editedText ?? draft.draftText,
-      status: "scheduled",
-      scheduledAt,
-    });
+    const [createdPost] = await db
+      .insert(posts)
+      .values({
+        userId,
+        draftId: id,
+        contentSnapshot: draft.editedText ?? draft.draftText,
+        status: "scheduled",
+        scheduledAt,
+      })
+      .returning({ id: posts.id });
+
+    await tasks.trigger<typeof publishPostTask>(
+      "publish-post",
+      {
+        postId: createdPost.id,
+        userId,
+      },
+      {
+        delay: scheduledAt.toISOString(),
+      },
+    );
 
     let editDepthPct = 0;
     let editDiffSummary: string | null = null;

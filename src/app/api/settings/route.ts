@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "@/lib/db";
 import { linkedinTokens, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import type { scheduleUserGenerateTask } from "@/trigger/scheduleUserGenerate";
 
 const defaults = {
   cadenceMode: "daily",
@@ -102,6 +104,18 @@ export async function PATCH(request: Request) {
           updatedAt: new Date(),
         },
       });
+
+    const scheduledSettings = await db.query.userSettings.findFirst({
+      where: eq(userSettings.userId, userId),
+    });
+    if (scheduledSettings) {
+      await tasks.trigger<typeof scheduleUserGenerateTask>("schedule-user-generate", {
+        userId,
+        preferredTime: scheduledSettings.preferredTime,
+        timezone: scheduledSettings.timezone,
+        cadenceMode: (scheduledSettings.cadenceMode as "daily" | "weekly" | "on_demand") ?? "daily",
+      });
+    }
 
     return Response.json({ success: true });
   } catch {

@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "@/lib/db";
 import { topicSubscriptions, userSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -29,6 +30,13 @@ export async function GET(request: NextRequest) {
             jitterMinutes: 15,
           })
           .onConflictDoNothing();
+
+        await tasks.trigger("schedule-user-generate", {
+          userId: user.id,
+          preferredTime: "09:00",
+          timezone: "UTC",
+          cadenceMode: "daily",
+        });
 
         const topics = await db
           .select({ id: topicSubscriptions.id })
