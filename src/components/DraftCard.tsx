@@ -30,6 +30,7 @@ export type DraftView = {
   voiceScore: number | null;
   sourceUrls: string[];
   status: string;
+  regenerationCount: number;
   staleAfter: string;
   generatedAt: string;
   aiTellFlags?: string | null;
@@ -189,6 +190,9 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
           ) : null}
 
           <span className="text-[11px] text-[#9CA3AF]">{age}</span>
+          {currentDraft.regenerationCount > 0 ? (
+            <span className="text-[11px] text-[#9CA3AF]">Regenerated {currentDraft.regenerationCount}×</span>
+          ) : null}
           {isNearExpiry ? <span className="text-[11px] font-medium text-[#D97706]">· Expires soon</span> : null}
         </div>
 

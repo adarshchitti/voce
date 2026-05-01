@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
+import { draftQueue, regenerationHistory, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
@@ -16,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!instruction?.trim()) return Response.json({ error: "instruction is required" }, { status: 400 });
     const original = await db.query.draftQueue.findFirst({ where: and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)) });
     if (!original || !original.researchItemId) return Response.json({ error: "Draft not found" }, { status: 404 });
+    const originalDraftText = original.editedText?.trim() ? original.editedText : original.draftText;
     const researchItem = await db.query.researchItems.findFirst({ where: eq(researchItems.id, original.researchItemId) });
     if (!researchItem) return Response.json({ error: "Research item missing" }, { status: 400 });
     const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
@@ -46,6 +47,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
     const voiceResult = voiceProfile?.calibrated ? await scoreVoiceDetailed({ voiceProfile, draftText: generated.draftText }) : null;
     const voiceScore = voiceResult?.score ?? null;
+    const nextSequence = (original.regenerationCount ?? 0) + 1;
+    const sanitisedInstruction = body.instruction ? sanitiseInstruction(body.instruction) : null;
     const [created] = await db
       .insert(draftQueue)
       .values({
@@ -58,9 +61,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         voiceScore,
         aiTellFlags: voiceResult?.flags?.length ? JSON.stringify({ words: [], structure: [], voice: voiceResult.flags }) : null,
         status: "pending",
+        regenerationCount: nextSequence,
         staleAfter: original.staleAfter,
       })
       .returning();
+    await db.insert(regenerationHistory).values({
+      userId,
+      draftId: id,
+      instruction: sanitisedInstruction,
+      draftTextBefore: originalDraftText,
+      draftTextAfter: generated.draftText,
+      sequenceNumber: nextSequence,
+    });
+    await db.update(draftQueue).set({ regenerationCount: nextSequence }).where(eq(draftQueue.id, id));
     await db.update(draftQueue).set({ status: "rejected" }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
     await db.insert(rejectionReasons).values({ userId, draftId: id, reasonCode: "other", freeText: `Regenerated: ${instruction}`, rejectionType: "other" });
     return Response.json({ draft: created });

@@ -2,7 +2,8 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Download, Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
 import { cn } from "@/lib/utils";
@@ -179,6 +180,115 @@ function formatEmojiStyle(emojiFrequency: string | null | undefined): string {
   return map[emojiFrequency ?? "none"] ?? "Not detected";
 }
 
+function ExportButton() {
+  const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
+
+  async function handleExport() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/account/export", { method: "POST" });
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `voce-export-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Export downloaded");
+    } catch {
+      showToast("Export failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={loading}
+      className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F9FAFB] disabled:opacity-50"
+    >
+      <span className="flex items-center gap-1.5">
+        {loading ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Exporting...
+          </>
+        ) : (
+          <>
+            <Download className="h-3.5 w-3.5" />
+            Export data
+          </>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function DeleteAccountButton() {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
+  const { showToast } = useToast();
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const response = await fetch("/api/account", { method: "DELETE" });
+      if (!response.ok) throw new Error("Deletion failed");
+      await fetch("/api/auth/signout", { method: "POST" });
+      router.push("/login");
+    } catch {
+      showToast("Deletion failed - please try again", "error");
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
+
+  if (confirming) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-[13px] font-medium text-[#DC2626]">Are you sure? This cannot be undone.</p>
+        <button
+          onClick={() => setConfirming(false)}
+          className="h-8 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F9FAFB]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50"
+        >
+          <span className="flex items-center gap-1.5">
+            {deleting ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              "Yes, delete my account"
+            )}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="h-8 rounded-md border border-[#FECACA] px-3 text-[12px] font-medium text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
+    >
+      Delete account
+    </button>
+  );
+}
+
 function VoiceRow({
   label,
   value,
@@ -330,7 +440,7 @@ export default function SettingsPage() {
   const [savingTellSettings, setSavingTellSettings] = useState(false);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [suggestingTopicIndex, setSuggestingTopicIndex] = useState<number | null>(null);
-  const [activeSection, setActiveSection] = useState<"voice" | "topics" | "scheduling" | "linkedin">("voice");
+  const [activeSection, setActiveSection] = useState<"voice" | "topics" | "scheduling" | "linkedin" | "account">("voice");
   const { showToast } = useToast();
 
   function applyVoiceProfileFromApi(vp: Record<string, unknown> | null | undefined) {
@@ -406,7 +516,7 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const sectionIds = ["voice", "topics", "scheduling", "linkedin"] as const;
+    const sectionIds = ["voice", "topics", "scheduling", "linkedin", "account"] as const;
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -710,6 +820,7 @@ export default function SettingsPage() {
               { id: "topics", label: "Topics" },
               { id: "scheduling", label: "Scheduling" },
               { id: "linkedin", label: "LinkedIn" },
+              { id: "account", label: "Account" },
             ].map((item) => (
               <a
                 key={item.id}
@@ -1384,6 +1495,33 @@ export default function SettingsPage() {
                   </a>
                 </div>
               )}
+            </div>
+          </section>
+
+          <section id="account" className="scroll-mt-6 space-y-4">
+            <div className="border-b border-[#E5E7EB] pb-3">
+              <h2 className="text-[16px] font-semibold text-[#111827]">Account</h2>
+              <p className="mt-0.5 text-[13px] text-[#6B7280]">Manage your data and account</p>
+            </div>
+
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-[14px] font-medium text-[#111827]">Export your data</h3>
+                  <p className="mt-0.5 text-[13px] text-[#6B7280]">
+                    Download all your drafts, posts, voice profile, topics, and activity as a JSON file.
+                  </p>
+                </div>
+                <ExportButton />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[#FECACA] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+              <h3 className="mb-1 text-[14px] font-medium text-[#DC2626]">Danger zone</h3>
+              <p className="mb-4 text-[13px] text-[#6B7280]">
+                Permanently delete your account and all associated data. This cannot be undone.
+              </p>
+              <DeleteAccountButton />
             </div>
           </section>
         </div>

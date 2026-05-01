@@ -94,10 +94,22 @@ export const draftQueue = pgTable("draft_queue", {
   voiceScore: integer("voice_score"),
   aiTellFlags: text("ai_tell_flags"),
   status: text("status").notNull().default("pending"),
+  regenerationCount: integer("regeneration_count").notNull().default(0),
   staleAfter: timestamp("stale_after", { withTimezone: true }).notNull(),
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   editedText: text("edited_text"),
+});
+
+export const regenerationHistory = pgTable("regeneration_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(), // STAGE2: change to uuid to match auth.uid()
+  draftId: uuid("draft_id").references(() => draftQueue.id),
+  instruction: text("instruction"),
+  draftTextBefore: text("draft_text_before"),
+  draftTextAfter: text("draft_text_after"),
+  sequenceNumber: integer("sequence_number").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const rejectionReasons = pgTable("rejection_reasons", {
@@ -238,6 +250,8 @@ export const draftMemories = pgTable("draft_memories", {
 
 export type DraftMemory = InferSelectModel<typeof draftMemories>;
 export type NewDraftMemory = InferInsertModel<typeof draftMemories>;
+export type RegenerationHistory = typeof regenerationHistory.$inferSelect;
+export type NewRegenerationHistory = typeof regenerationHistory.$inferInsert;
 export type ContentSeries = InferSelectModel<typeof contentSeries>;
 export type NewContentSeries = InferInsertModel<typeof contentSeries>;
 export type SeriesTopicSubscription = InferSelectModel<typeof seriesTopicSubscriptions>;
