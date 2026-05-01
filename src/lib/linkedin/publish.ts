@@ -1,5 +1,5 @@
 const LINKEDIN_API_BASE = "https://api.linkedin.com";
-const LINKEDIN_API_VERSION = "202505";
+const LINKEDIN_API_VERSION = "202510";
 
 export async function publishToLinkedIn({
   accessToken,
