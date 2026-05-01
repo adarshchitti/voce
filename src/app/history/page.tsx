@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, ChevronRight, Clock, ExternalLink, FileText, Inbox, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { combineDateAndTime } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/components/Toast";
 
 type Post = {
@@ -153,6 +155,92 @@ function MoveToInboxButton({
   );
 }
 
+function RescheduleButton({
+  postId,
+  currentScheduledAt,
+  onSuccess,
+}: {
+  postId: string;
+  currentScheduledAt: string;
+  onSuccess: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(new Date(currentScheduledAt).toISOString().split("T")[0] ?? "");
+  const [time, setTime] = useState(new Date(currentScheduledAt).toISOString().slice(11, 16));
+  const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
+
+  async function handleReschedule() {
+    setSaving(true);
+    try {
+      const scheduledAt = combineDateAndTime(date, time, "UTC");
+      const res = await fetch(`/api/posts/${postId}/reschedule`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduledAt }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      showToast("Post rescheduled", "success");
+      setOpen(false);
+      onSuccess();
+    } catch {
+      showToast("Reschedule failed", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:border-[#BFDBFE] hover:bg-[#EFF6FF] hover:text-[#2563EB]">
+          <Clock className="h-3 w-3" />
+          Reschedule
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 space-y-3 p-4">
+        <p className="text-[13px] font-medium text-[#111827]">Reschedule post</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-[11px] text-[#6B7280]">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px]"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-[#6B7280]">Time (UTC)</label>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px]"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => setOpen(false)}
+            className="h-8 flex-1 rounded-md border border-[#E5E7EB] text-[12px] text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleReschedule}
+            disabled={saving}
+            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2563EB] text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {saving ? "Saving..." : "Confirm"}
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ManualMetrics({ post }: { post: Post }) {
   const [impressions, setImpressions] = useState<string | number>(post.manualImpressions ?? "");
   const [reactions, setReactions] = useState<string | number>(post.manualReactions ?? "");
@@ -272,7 +360,7 @@ function PostRow({
 }: {
   post: Post;
   isLast: boolean;
-  onMoveSuccess: (postId: string) => void;
+  onMoveSuccess: (postId?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const firstLine = post.contentSnapshot.split("\n")[0] ?? "";
@@ -280,11 +368,11 @@ function PostRow({
     <div className={cn("transition-colors hover:bg-[#FAFAFA]", !isLast && "border-b border-[#F3F4F6]")}>
       <div className="flex cursor-pointer items-center gap-3 px-4 py-3" onClick={() => setExpanded((prev) => !prev)}>
         <StatusIcon status={post.status} />
-        <div className="w-28 shrink-0">
-          <p className="text-[12.5px] font-medium text-[#374151]">{format(new Date(post.scheduledAt), "MMM d, yyyy")}</p>
-          <p className="text-[11px] text-[#9CA3AF]">{format(new Date(post.scheduledAt), "h:mm a")}</p>
+        <div className="w-20 shrink-0">
+          <p className="text-[12px] font-medium text-[#374151]">{format(new Date(post.scheduledAt), "MMM d")}</p>
+          <p className="hidden text-[11px] text-[#9CA3AF] sm:block">{format(new Date(post.scheduledAt), "h:mm a")}</p>
         </div>
-        <p className="flex-1 truncate text-[13px] text-[#374151]">{firstLine}</p>
+        <p className="min-w-0 flex-1 truncate text-[13px] text-[#374151]">{firstLine}</p>
         {post.seriesId ? (
           <span className="hidden shrink-0 rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280] md:block">
             {post.seriesTitle?.slice(0, 20) ?? "Project"}
@@ -294,7 +382,7 @@ function PostRow({
         {post.voiceScore ? (
           <span
             className={cn(
-              "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium",
+              "hidden shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium sm:block",
               post.voiceScore >= 8 && "bg-[#F0FDF4] text-[#16A34A]",
               post.voiceScore >= 5 && post.voiceScore < 8 && "bg-[#FFFBEB] text-[#D97706]",
               post.voiceScore < 5 && "bg-[#FEF2F2] text-[#DC2626]",
@@ -340,6 +428,13 @@ function PostRow({
             {["scheduled", "publishing", "failed"].includes(post.status) ? (
               <MoveToInboxButton postId={post.id} onSuccess={() => onMoveSuccess(post.id)} />
             ) : null}
+            {post.status === "scheduled" ? (
+              <RescheduleButton
+                postId={post.id}
+                currentScheduledAt={post.scheduledAt}
+                onSuccess={() => onMoveSuccess()}
+              />
+            ) : null}
             {post.status === "published" ? <ManualMetrics post={post} /> : null}
           </div>
         </div>
@@ -351,11 +446,21 @@ function PostRow({
 export default function HistoryPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [filter, setFilter] = useState<FilterKey>("all");
+  async function loadPosts() {
+    const response = await fetch("/api/posts");
+    const data = await response.json();
+    setPosts(data.posts ?? []);
+  }
+
   useEffect(() => {
-    fetch("/api/posts").then((r) => r.json()).then((d) => setPosts(d.posts ?? []));
+    void loadPosts();
   }, []);
 
-  function handleMoveSuccess(postId: string) {
+  function handleMoveSuccess(postId?: string) {
+    if (!postId) {
+      void loadPosts();
+      return;
+    }
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }
 
@@ -375,7 +480,7 @@ export default function HistoryPage() {
   }, [filter, posts]);
 
   return (
-    <div>
+    <div className="overflow-x-hidden">
       <PageHeader title="History" description="All scheduled and published posts" />
       <div className="mb-5 flex gap-1 border-b border-[#E5E7EB] pb-0">
         {[
@@ -407,7 +512,7 @@ export default function HistoryPage() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+      <div className="w-full rounded-lg border border-[#E5E7EB] bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
         {filteredPosts.length === 0 ? (
           <EmptyState filter={filter} />
         ) : (

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   AlertTriangle,
   Check,
@@ -18,7 +18,10 @@ import {
 import RejectionModal from "./RejectionModal";
 import { useToast } from "./Toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { calculateScheduledAt } from "@/lib/scheduler";
 import { cn } from "@/lib/utils";
+import { combineDateAndTime } from "@/lib/utils";
 import { LinkedInPreview } from "./LinkedInPreview";
 
 export type DraftView = {
@@ -63,22 +66,69 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isPersonalizing, setIsPersonalizing] = useState(false);
   const [showPreviewMobile, setShowPreviewMobile] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customDate, setCustomDate] = useState(new Date().toISOString().split("T")[0] ?? "");
+  const [customTime, setCustomTime] = useState("09:00");
+  const [schedulingTimezone, setSchedulingTimezone] = useState("UTC");
+  const [nextPreferredLabel, setNextPreferredLabel] = useState("Calculating...");
   const { showToast } = useToast();
 
   const age = useMemo(() => {
     return formatDistanceToNow(new Date(draft.generatedAt), { addSuffix: true });
   }, [draft.generatedAt]);
 
-  async function handleApprove() {
+  useEffect(() => {
+    let active = true;
+    fetch("/api/settings")
+      .then((response) => response.json())
+      .then((data) => {
+        if (!active) return;
+        const settings = data.settings ?? {};
+        const timezone = settings.timezone ?? "UTC";
+        setSchedulingTimezone(timezone);
+        const computed = calculateScheduledAt({
+          preferredTime: settings.preferredTime ?? "09:00",
+          timezone,
+          jitterMinutes: settings.jitterMinutes ?? 15,
+          preferredDays: settings.preferredDays ?? ["monday", "tuesday", "wednesday", "thursday"],
+        });
+        setNextPreferredLabel(format(computed, "EEE, MMM d 'at' h:mm a"));
+      })
+      .catch(() => {
+        if (!active) return;
+        setSchedulingTimezone("UTC");
+        setNextPreferredLabel("Next available preferred slot");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleApprove(scheduledAt?: string) {
     setIsApproving(true);
-    const response = await fetch(`/api/drafts/${currentDraft.id}/approve`, { method: "POST" });
+    const response = await fetch(`/api/drafts/${currentDraft.id}/approve`, {
+      method: "POST",
+      headers: scheduledAt ? { "Content-Type": "application/json" } : undefined,
+      body: scheduledAt ? JSON.stringify({ scheduledAt }) : undefined,
+    });
     setIsApproving(false);
     if (response.ok) {
       showToast("Draft scheduled", "success");
+      setShowScheduler(false);
       onRemoved();
       return;
     }
     showToast("Failed to save", "error");
+  }
+
+  async function handleConfirmSchedule() {
+    if (!useCustomTime) {
+      await handleApprove();
+      return;
+    }
+    const scheduledAt = combineDateAndTime(customDate, customTime, schedulingTimezone);
+    await handleApprove(scheduledAt);
   }
 
   async function handleSaveEdits() {
@@ -345,23 +395,102 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
                 Save edits
               </button>
             ) : null}
-            <button
-              onClick={handleApprove}
-              disabled={isApproving || charCount > 3000}
-              className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isApproving ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Scheduling...
-                </>
-              ) : (
-                <>
-                  <Check className="h-3 w-3" />
-                  Approve & Schedule
-                </>
-              )}
-            </button>
+            <Popover open={showScheduler} onOpenChange={setShowScheduler}>
+              <PopoverTrigger asChild>
+                <button
+                  disabled={isApproving || charCount > 3000}
+                  className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isApproving ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Scheduling...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3 w-3" />
+                      Approve & Schedule
+                    </>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[320px] space-y-3 p-4">
+                <p className="text-[13px] font-medium text-[#111827]">Schedule this post</p>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-[#E5E7EB] p-2.5 text-[12px]">
+                    <input
+                      type="radio"
+                      checked={!useCustomTime}
+                      onChange={() => setUseCustomTime(false)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="font-medium text-[#111827]">Next preferred slot</p>
+                      <p className="text-[#6B7280]">{nextPreferredLabel}</p>
+                    </div>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-[#E5E7EB] p-2.5 text-[12px]">
+                    <input
+                      type="radio"
+                      checked={useCustomTime}
+                      onChange={() => setUseCustomTime(true)}
+                      className="mt-0.5"
+                    />
+                    <div className="w-full space-y-2">
+                      <p className="font-medium text-[#111827]">Pick a date and time</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="date"
+                          value={customDate}
+                          onChange={(e) => setCustomDate(e.target.value)}
+                          disabled={!useCustomTime}
+                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                        />
+                        <input
+                          type="time"
+                          value={customTime}
+                          onChange={(e) => setCustomTime(e.target.value)}
+                          disabled={!useCustomTime}
+                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                        />
+                      </div>
+                      <select
+                        value={schedulingTimezone}
+                        onChange={(e) => setSchedulingTimezone(e.target.value)}
+                        disabled={!useCustomTime}
+                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                      >
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="America/Chicago">America/Chicago</option>
+                        <option value="America/Denver">America/Denver</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles</option>
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Asia/Kolkata">Asia/Kolkata</option>
+                      </select>
+                    </div>
+                  </label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowScheduler(false)}
+                    className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmSchedule}
+                    disabled={isApproving}
+                    className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-50"
+                  >
+                    {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    Confirm & Schedule
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>

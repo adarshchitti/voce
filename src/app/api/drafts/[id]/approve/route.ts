@@ -59,7 +59,7 @@ Return plain text only, no JSON, no bullet points.`,
   return response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
 }
 
-export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -69,12 +69,19 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
 
     const settings = await db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) });
     if (!settings) return Response.json({ error: "Missing settings" }, { status: 400 });
-    const scheduledAt = calculateScheduledAt({
-      preferredTime: settings.preferredTime,
-      timezone: settings.timezone,
-      jitterMinutes: settings.jitterMinutes,
-      preferredDays: settings.preferredDays,
-    });
+    const requestBody = await request.json().catch(() => ({} as { scheduledAt?: string }));
+    const customScheduledAt = requestBody?.scheduledAt ? new Date(requestBody.scheduledAt) : null;
+    if (customScheduledAt && Number.isNaN(customScheduledAt.getTime())) {
+      return Response.json({ error: "Invalid scheduledAt value" }, { status: 400 });
+    }
+    const scheduledAt =
+      customScheduledAt ??
+      calculateScheduledAt({
+        preferredTime: settings.preferredTime,
+        timezone: settings.timezone,
+        jitterMinutes: settings.jitterMinutes,
+        preferredDays: settings.preferredDays,
+      });
 
     await db.update(draftQueue).set({ status: "approved", scheduledFor: scheduledAt }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
     const [createdPost] = await db
@@ -95,7 +102,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         userId,
       },
       {
-        delay: scheduledAt.toISOString(),
+        delay: scheduledAt,
       },
     );
 

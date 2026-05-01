@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 
 const DAYS = [
@@ -57,8 +57,17 @@ export function SchedulingForm({ initialSettings }: SchedulingFormProps) {
     initialSettings.preferredDays ?? ["monday", "tuesday", "wednesday", "thursday"],
   );
   const [preferredTime, setPreferredTime] = useState(normalizeTime(initialSettings.preferredTime));
-  const [timezone, setTimezone] = useState(initialSettings.timezone ?? "America/New_York");
+  const [timezone, setTimezone] = useState(initialSettings.timezone ?? "UTC");
   const [jitterMinutes, setJitterMinutes] = useState(initialSettings.jitterMinutes ?? 15);
+
+  useEffect(() => {
+    setCadenceMode(initialSettings.cadenceMode ?? "daily");
+    setDraftsPerDay(initialSettings.draftsPerDay ?? 3);
+    setPreferredDays(initialSettings.preferredDays ?? ["monday", "tuesday", "wednesday", "thursday"]);
+    setPreferredTime(normalizeTime(initialSettings.preferredTime ?? "09:00"));
+    setTimezone(initialSettings.timezone ?? "UTC");
+    setJitterMinutes(initialSettings.jitterMinutes ?? 15);
+  }, [initialSettings]);
 
   const toggleDay = (day: string) => {
     setPreferredDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));

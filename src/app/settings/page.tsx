@@ -427,7 +427,7 @@ export default function SettingsPage() {
     draftsPerDay: 3,
     preferredDays: ["monday", "tuesday", "wednesday", "thursday"],
     preferredTime: "09:00",
-    timezone: "America/New_York",
+    timezone: "UTC",
     jitterMinutes: 15,
   });
   const [tellFlagNumberedLists, setTellFlagNumberedLists] = useState<"always" | "three_plus" | "never">("three_plus");
@@ -501,7 +501,7 @@ export default function SettingsPage() {
           draftsPerDay: d.settings?.draftsPerDay ?? 3,
           preferredDays: d.settings?.preferredDays ?? ["monday", "tuesday", "wednesday", "thursday"],
           preferredTime: d.settings?.preferredTime ?? "09:00",
-          timezone: d.settings?.timezone ?? "America/New_York",
+          timezone: d.settings?.timezone ?? "UTC",
           jitterMinutes: d.settings?.jitterMinutes ?? 15,
         });
         setTellFlagNumberedLists(d.settings?.tellFlagNumberedLists ?? "three_plus");
