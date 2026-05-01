@@ -1,8 +1,8 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState } from "react";
-import { ChevronRight, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
 import { cn } from "@/lib/utils";
@@ -23,10 +23,153 @@ interface TopicRow {
   querySuggested?: boolean;
 }
 
+function parseLoadedSamplePosts(samplePosts: string[] | undefined): string[] {
+  if (!samplePosts?.length) return [""];
+  const pieces: string[] = [];
+  for (const block of samplePosts) {
+    const split = block.split(/\n?---\n?/).map((s) => s.trim()).filter(Boolean);
+    if (split.length > 1) pieces.push(...split);
+    else if (block.trim()) pieces.push(block.trim());
+  }
+  return pieces.length ? pieces : [""];
+}
+
+function formatWritingStyle(profile: {
+  avgSentenceLengthWords?: number | null;
+  avgWordsPerPost?: number | null;
+  paragraphStyle?: string | null;
+}): string {
+  const parts: string[] = [];
+  if (profile.avgSentenceLengthWords != null) {
+    parts.push(`${profile.avgSentenceLengthWords}-word sentences on average`);
+  }
+  if (profile.avgWordsPerPost != null) {
+    parts.push(`~${profile.avgWordsPerPost} words per post`);
+  }
+  if (profile.paragraphStyle) {
+    const styleMap: Record<string, string> = {
+      single_line: "one sentence per line",
+      two_three_lines: "short paragraphs",
+      multi_paragraph: "longer paragraphs",
+      mixed: "mixed paragraph lengths",
+    };
+    parts.push(styleMap[profile.paragraphStyle] ?? profile.paragraphStyle);
+  }
+  return parts.join(" · ") || "Not yet analysed";
+}
+
+function formatHookStyle(hookStyle: string | null): string {
+  if (!hookStyle) return "Not detected";
+  const map: Record<string, string> = {
+    question: "Opens with a question",
+    bold_claim: "Opens with a bold claim",
+    personal_story: "Opens with a personal story",
+    data_point: "Opens with a data point or stat",
+    contrarian: "Opens with a contrarian take",
+  };
+  return map[hookStyle] ?? hookStyle;
+}
+
+function formatEmojiStyle(emojiFrequency: string | null | undefined): string {
+  const map: Record<string, string> = {
+    none: "No emojis",
+    rare: "Rarely uses emojis",
+    occasional: "Occasionally uses emojis",
+    frequent: "Frequently uses emojis",
+  };
+  return map[emojiFrequency ?? "none"] ?? "Not detected";
+}
+
+function VoiceRow({
+  label,
+  value,
+  editable,
+  multiline,
+  onEdit,
+}: {
+  label: string;
+  value: ReactNode;
+  editable?: boolean;
+  multiline?: boolean;
+  onEdit?: (val: string) => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(typeof value === "string" ? value : "");
+
+  useEffect(() => {
+    if (typeof value === "string") setEditValue(value);
+  }, [value]);
+
+  return (
+    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-[#FAFAFA]">
+      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-[#9CA3AF]">{label}</span>
+      <div className="min-w-0 flex-1">
+        {editing && editable && onEdit ? (
+          <div className="space-y-1.5">
+            {multiline ? (
+              <textarea
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-md border border-[#2563EB] px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+                autoFocus
+              />
+            ) : (
+              <input
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="w-full rounded-md border border-[#2563EB] px-2 py-1 text-[13px] text-[#374151] outline-none"
+                autoFocus
+              />
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  await onEdit(editValue);
+                  setEditing(false);
+                }}
+                className="text-[11px] font-medium text-[#2563EB]"
+              >
+                Save
+              </button>
+              <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-[#9CA3AF]">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-2">
+            {typeof value === "string" ? (
+              <span className="text-[13px] leading-relaxed text-[#374151]">
+                {value || <span className="text-[#9CA3AF]">Not detected</span>}
+              </span>
+            ) : (
+              value
+            )}
+            {editable && onEdit ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditValue(typeof value === "string" ? value : "");
+                  setEditing(true);
+                }}
+                className="flex-shrink-0 text-[11px] text-[#9CA3AF] opacity-0 transition-opacity hover:text-[#2563EB] group-hover:opacity-100"
+              >
+                Edit
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [rawDescription, setRawDescription] = useState("");
   const [personalContext, setPersonalContext] = useState("");
-  const [samplePostsText, setSamplePostsText] = useState("");
+  const [samplePosts, setSamplePosts] = useState<string[]>([""]);
   const [sentenceLength, setSentenceLength] = useState<string | null>(null);
   const [hookStyle, setHookStyle] = useState<string | null>(null);
   const [pov, setPov] = useState<string | null>(null);
@@ -37,6 +180,11 @@ export default function SettingsPage() {
   const [signaturePhrases, setSignaturePhrases] = useState<string[]>([]);
   const [neverPatterns, setNeverPatterns] = useState<string[]>([]);
   const [postStructureTemplate, setPostStructureTemplate] = useState("");
+  const [avgSentenceLengthWords, setAvgSentenceLengthWords] = useState<number | null>(null);
+  const [avgWordsPerPost, setAvgWordsPerPost] = useState<number | null>(null);
+  const [paragraphStyle, setParagraphStyle] = useState<string | null>(null);
+  const [emojiFrequency, setEmojiFrequency] = useState<string | null>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [emojiNeverOverride, setEmojiNeverOverride] = useState(false);
   const [newSignaturePhrase, setNewSignaturePhrase] = useState("");
   const [newNeverPattern, setNewNeverPattern] = useState("");
@@ -64,25 +212,35 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<"voice" | "topics" | "scheduling" | "linkedin">("voice");
   const { showToast } = useToast();
 
+  function applyVoiceProfileFromApi(vp: Record<string, unknown> | null | undefined) {
+    if (!vp) return;
+    setRawDescription((vp.rawDescription as string) ?? "");
+    setSamplePosts(parseLoadedSamplePosts(vp.samplePosts as string[] | undefined));
+    setSentenceLength((vp.sentenceLength as string | null) ?? null);
+    setHookStyle((vp.hookStyle as string | null) ?? null);
+    setPov((vp.pov as string | null) ?? null);
+    setToneMarkers((vp.toneMarkers as string[]) ?? []);
+    setFormattingStyle((vp.formattingStyle as string | null) ?? null);
+    setCalibrationQuality((vp.calibrationQuality as string) ?? "uncalibrated");
+    setSamplePostCount((vp.samplePostCount as number) ?? 0);
+    setSignaturePhrases((vp.signaturePhrases as string[]) ?? []);
+    setNeverPatterns((vp.neverPatterns as string[]) ?? []);
+    setPostStructureTemplate((vp.postStructureTemplate as string) ?? "");
+    setAvgSentenceLengthWords((vp.avgSentenceLengthWords as number | null) ?? null);
+    setAvgWordsPerPost((vp.avgWordsPerPost as number | null) ?? null);
+    setParagraphStyle((vp.paragraphStyle as string | null) ?? null);
+    const extracted = vp.extractedPatterns as { emojiFrequency?: string } | null | undefined;
+    setEmojiFrequency(extracted?.emojiFrequency ?? null);
+    setEmojiNeverOverride(Boolean(vp.emojiNeverOverride));
+    setUserBannedWordsText(((vp.userBannedWords as string[]) ?? []).join(", "));
+    setUserNotes((vp.userNotes as string) ?? "");
+    setPersonalContext((vp.personalContext as string) ?? "");
+  }
+
   useEffect(() => {
-    fetch("/api/voice").then((r) => r.json()).then((d) => {
-      setRawDescription(d.voiceProfile?.rawDescription ?? "");
-      setSamplePostsText((d.voiceProfile?.samplePosts ?? []).join("\n---\n"));
-      setSentenceLength(d.voiceProfile?.sentenceLength ?? null);
-      setHookStyle(d.voiceProfile?.hookStyle ?? null);
-      setPov(d.voiceProfile?.pov ?? null);
-      setToneMarkers(d.voiceProfile?.toneMarkers ?? []);
-      setFormattingStyle(d.voiceProfile?.formattingStyle ?? null);
-      setCalibrationQuality(d.voiceProfile?.calibrationQuality ?? "uncalibrated");
-      setSamplePostCount(d.voiceProfile?.samplePostCount ?? 0);
-      setSignaturePhrases(d.voiceProfile?.signaturePhrases ?? []);
-      setNeverPatterns(d.voiceProfile?.neverPatterns ?? []);
-      setPostStructureTemplate(d.voiceProfile?.postStructureTemplate ?? "");
-      setEmojiNeverOverride(d.voiceProfile?.emojiNeverOverride ?? false);
-      setUserBannedWordsText((d.voiceProfile?.userBannedWords ?? []).join(", "));
-      setUserNotes(d.voiceProfile?.userNotes ?? "");
-      setPersonalContext(d.voiceProfile?.personalContext ?? "");
-    });
+    fetch("/api/voice")
+      .then((r) => r.json())
+      .then((d) => applyVoiceProfileFromApi(d.voiceProfile));
 
     fetch("/api/topics")
       .then((r) => r.json())
@@ -148,17 +306,34 @@ export default function SettingsPage() {
     return () => observer.disconnect();
   }, []);
 
-  async function saveVoice() {
-    const samplePosts = samplePostsText
-      .split("---")
-      .map((p) => p.trim())
-      .filter(Boolean);
+  async function persistVoiceAndRefresh(): Promise<boolean> {
+    const trimmed = samplePosts.map((p) => p.trim()).filter(Boolean);
     const response = await fetch("/api/voice", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawDescription, samplePosts, personalContext }),
+      body: JSON.stringify({ rawDescription, samplePosts: trimmed, personalContext }),
     });
-    showToast(response.ok ? "Voice profile saved" : "Failed to save", response.ok ? "success" : "error");
+    if (!response.ok) return false;
+    const data = await fetch("/api/voice").then((r) => r.json());
+    applyVoiceProfileFromApi(data.voiceProfile);
+    return true;
+  }
+
+  async function saveVoice() {
+    const ok = await persistVoiceAndRefresh();
+    showToast(ok ? "Voice profile saved" : "Failed to save", ok ? "success" : "error");
+  }
+
+  function addPost() {
+    setSamplePosts((prev) => [...prev, ""]);
+  }
+
+  function removePost(index: number) {
+    setSamplePosts((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  function updatePost(index: number, value: string) {
+    setSamplePosts((prev) => prev.map((p, i) => (i === index ? value : p)));
   }
 
   const updateTopic = (index: number, field: keyof TopicRow, value: string | string[] | number | boolean | undefined) => {
@@ -326,6 +501,30 @@ export default function SettingsPage() {
     }
   }
 
+  async function removeSignaturePhrase(index: number) {
+    const next = signaturePhrases.filter((_, i) => i !== index);
+    setSignaturePhrases(next);
+    await patchVoiceOverrides({ signaturePhrases: next });
+  }
+
+  async function removeNeverPattern(index: number) {
+    const next = neverPatterns.filter((_, i) => i !== index);
+    setNeverPatterns(next);
+    await patchVoiceOverrides({ neverPatterns: next });
+  }
+
+  async function handleReanalyze() {
+    const n = samplePosts.filter((p) => p.trim().length > 50).length;
+    if (n < 3) return;
+    setIsExtracting(true);
+    try {
+      const ok = await persistVoiceAndRefresh();
+      showToast(ok ? "Posts re-analysed" : "Failed to re-analyse", ok ? "success" : "error");
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
   const toggleTellFlag = (key: keyof typeof tellFlags) => {
     setTellFlags((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -350,15 +549,8 @@ export default function SettingsPage() {
     }
   }
 
-  const sampleCount = samplePostCount || samplePostsText
-    .split("---")
-    .map((p) => p.trim())
-    .filter(Boolean).length;
-  const isCalibrated = sampleCount >= 3 && !!sentenceLength && !!hookStyle && !!pov && !!formattingStyle;
-  const extractedPatterns =
-    sentenceLength && hookStyle && pov && formattingStyle
-      ? { sentenceLength, hookStyle, pov, formattingStyle, toneMarkers }
-      : null;
+  const validPostCount = samplePosts.filter((p) => p.trim().length > 50).length;
+  const sampleCount = Math.max(samplePostCount, validPostCount);
 
   const calibrationUi =
     calibrationQuality === "full"
@@ -427,15 +619,69 @@ export default function SettingsPage() {
                 <span className="hidden text-[12px] text-[#6B7280] md:block">{calibrationUi.nudge}</span>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[13px] font-medium text-[#374151]">Sample posts</label>
-                <p className="text-[12px] text-[#9CA3AF]">Paste 8+ of your best LinkedIn posts. Separate each post with a blank line.</p>
-                <textarea
-                  rows={8}
-                  value={samplePostsText}
-                  onChange={(e) => setSamplePostsText(e.target.value)}
-                  className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] placeholder:text-[#9CA3AF] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
-                />
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[13px] font-medium text-[#374151]">Sample posts</label>
+                  <p className="text-[12px] text-[#9CA3AF]">
+                    Add your best LinkedIn posts. The more you add, the more accurate your voice profile.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {samplePosts.map((post, index) => (
+                    <div key={index} className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white">
+                      <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-[#FAFAFA] px-3 py-2">
+                        <span className="text-[12px] font-medium text-[#6B7280]">Post {index + 1}</span>
+                        {samplePosts.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => removePost(index)}
+                            className="text-[#9CA3AF] transition-colors hover:text-[#DC2626]"
+                            aria-label={`Remove post ${index + 1}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                      <textarea
+                        value={post}
+                        onChange={(e) => updatePost(index, e.target.value)}
+                        placeholder="Paste your LinkedIn post here..."
+                        rows={4}
+                        className="w-full resize-none border-0 bg-white px-3 py-2.5 text-[13px] leading-relaxed text-[#374151] outline-none placeholder:text-[#9CA3AF]"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addPost}
+                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add another post
+                </button>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#F3F4F6]">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          validPostCount >= 8 ? "bg-[#16A34A]" : validPostCount >= 3 ? "bg-[#D97706]" : "bg-[#E5E7EB]",
+                        )}
+                        style={{ width: `${Math.min((validPostCount / 8) * 100, 100)}%` }}
+                      />
+                    </div>
+                    <span
+                      className={cn(
+                        "font-medium",
+                        validPostCount >= 8 ? "text-[#16A34A]" : validPostCount >= 3 ? "text-[#D97706]" : "text-[#9CA3AF]",
+                      )}
+                    >
+                      {validPostCount} / 8 posts
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-[#6B7280]">Calibration: {validPostCount} of 8 recommended posts added</p>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -496,108 +742,144 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <details className="group">
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] text-[#6B7280] hover:text-[#374151]">
-                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-                  Extracted voice patterns
-                </summary>
-                <div className="mt-3 space-y-4 pl-5">
-                  {isCalibrated && extractedPatterns ? (
-                    <div className="grid grid-cols-1 gap-2 text-[12px] text-[#6B7280] md:grid-cols-2">
-                      <div><span className="text-[#9CA3AF]">Sentences:</span> {extractedPatterns.sentenceLength}</div>
-                      <div><span className="text-[#9CA3AF]">Hook style:</span> {extractedPatterns.hookStyle}</div>
-                      <div><span className="text-[#9CA3AF]">POV:</span> {extractedPatterns.pov}</div>
-                      <div><span className="text-[#9CA3AF]">Format:</span> {extractedPatterns.formattingStyle}</div>
-                    </div>
-                  ) : null}
-                  <div>
-                    <p className="mb-2 text-[12px] font-medium text-[#6B7280]">Signature phrases</p>
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {signaturePhrases.map((phrase) => (
+              {calibrationQuality !== "uncalibrated" ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[13px] font-semibold text-[#374151]">What we learned about your voice</h3>
+                    <span className="text-[11px] text-[#9CA3AF]">Edit anything that looks wrong</span>
+                  </div>
+
+                  <div className="divide-y divide-[#F3F4F6] overflow-hidden rounded-lg border border-[#E5E7EB] bg-white">
+                    <VoiceRow
+                      label="Writing style"
+                      value={formatWritingStyle({ avgSentenceLengthWords, avgWordsPerPost, paragraphStyle })}
+                    />
+                    <VoiceRow label="How you open posts" value={formatHookStyle(hookStyle)} />
+                    <VoiceRow
+                      label="Post structure"
+                      value={postStructureTemplate}
+                      editable
+                      multiline
+                      onEdit={async (val) => {
+                        setPostStructureTemplate(val);
+                        await patchVoiceOverrides({ postStructureTemplate: val });
+                      }}
+                    />
+                    {neverPatterns.length > 0 ? (
+                      <VoiceRow
+                        label="You never..."
+                        value={
+                          <div className="flex flex-wrap gap-1">
+                            {neverPatterns.map((pattern, i) => (
+                              <button
+                                key={`never-${i}-${pattern.slice(0, 12)}`}
+                                type="button"
+                                title="Remove"
+                                onClick={() => removeNeverPattern(i)}
+                                className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEE2E2]"
+                              >
+                                {pattern} ×
+                              </button>
+                            ))}
+                          </div>
+                        }
+                      />
+                    ) : null}
+                    {signaturePhrases.length > 0 ? (
+                      <VoiceRow
+                        label="Your signature phrases"
+                        value={
+                          <div className="flex flex-wrap gap-1">
+                            {signaturePhrases.map((phrase, i) => (
+                              <button
+                                key={`sig-${i}-${phrase.slice(0, 12)}`}
+                                type="button"
+                                title="Click to remove"
+                                onClick={() => removeSignaturePhrase(i)}
+                                className="cursor-pointer rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[11px] text-[#2563EB] transition-colors hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                              >
+                                {phrase} ×
+                              </button>
+                            ))}
+                          </div>
+                        }
+                      />
+                    ) : null}
+                    {toneMarkers.length > 0 ? <VoiceRow label="Tone" value={toneMarkers.join(", ")} /> : null}
+                    <VoiceRow label="Emoji usage" value={formatEmojiStyle(emojiFrequency)} />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div>
+                      <p className="mb-1.5 text-[12px] font-medium text-[#6B7280]">Add signature phrase</p>
+                      <div className="flex gap-2">
+                        <input
+                          value={newSignaturePhrase}
+                          onChange={(e) => setNewSignaturePhrase(e.target.value)}
+                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                        />
                         <button
-                          key={phrase}
+                          type="button"
                           onClick={async () => {
-                            const next = signaturePhrases.filter((p) => p !== phrase);
+                            const phrase = newSignaturePhrase.trim();
+                            if (!phrase) return;
+                            const next = [...signaturePhrases, phrase];
                             setSignaturePhrases(next);
+                            setNewSignaturePhrase("");
                             await patchVoiceOverrides({ signaturePhrases: next });
                           }}
-                          className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2.5 py-1 text-[11px] text-[#6B7280]"
+                          className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
                         >
-                          {phrase} ×
+                          Add
                         </button>
-                      ))}
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <input
-                        value={newSignaturePhrase}
-                        onChange={(e) => setNewSignaturePhrase(e.target.value)}
-                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
-                      />
-                      <button
-                        onClick={async () => {
-                          const phrase = newSignaturePhrase.trim();
-                          if (!phrase) return;
-                          const next = [...signaturePhrases, phrase];
-                          setSignaturePhrases(next);
-                          setNewSignaturePhrase("");
-                          await patchVoiceOverrides({ signaturePhrases: next });
-                        }}
-                        className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-[12px] font-medium text-[#6B7280]">Never patterns</p>
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {neverPatterns.map((pattern) => (
+                    <div>
+                      <p className="mb-1.5 text-[12px] font-medium text-[#6B7280]">Add never pattern</p>
+                      <div className="flex gap-2">
+                        <input
+                          value={newNeverPattern}
+                          onChange={(e) => setNewNeverPattern(e.target.value)}
+                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                        />
                         <button
-                          key={pattern}
+                          type="button"
                           onClick={async () => {
-                            const next = neverPatterns.filter((p) => p !== pattern);
+                            const pattern = newNeverPattern.trim();
+                            if (!pattern) return;
+                            const next = [...neverPatterns, pattern];
                             setNeverPatterns(next);
+                            setNewNeverPattern("");
                             await patchVoiceOverrides({ neverPatterns: next });
                           }}
-                          className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2.5 py-1 text-[11px] text-[#6B7280]"
+                          className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
                         >
-                          {pattern} ×
+                          Add
                         </button>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        value={newNeverPattern}
-                        onChange={(e) => setNewNeverPattern(e.target.value)}
-                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
-                      />
-                      <button
-                        onClick={async () => {
-                          const pattern = newNeverPattern.trim();
-                          if (!pattern) return;
-                          const next = [...neverPatterns, pattern];
-                          setNeverPatterns(next);
-                          setNewNeverPattern("");
-                          await patchVoiceOverrides({ neverPatterns: next });
-                        }}
-                        className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
-                      >
-                        Add
-                      </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[12px] font-medium text-[#6B7280]">Structure template</label>
-                    <textarea
-                      rows={3}
-                      value={postStructureTemplate}
-                      onChange={(e) => setPostStructureTemplate(e.target.value)}
-                      onBlur={() => patchVoiceOverrides({ postStructureTemplate })}
-                      className="w-full rounded-md border border-[#E5E7EB] px-3 py-2 text-[12px]"
-                    />
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleReanalyze()}
+                    disabled={isExtracting || validPostCount < 3}
+                    className="flex items-center gap-1.5 text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isExtracting ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Re-analysing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3" />
+                        Re-analyse my posts
+                      </>
+                    )}
+                  </button>
                 </div>
-              </details>
+              ) : null}
 
               <div className="flex items-center justify-between py-2">
                 <div>
