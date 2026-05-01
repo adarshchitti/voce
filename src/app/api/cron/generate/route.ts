@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, lte, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   draftQueue,
@@ -31,13 +31,20 @@ export async function POST(request: Request) {
 
     let errors = 0;
 
-    const settingsRows = await db.select().from(userSettings).where(notInArray(userSettings.cadenceMode, ["on_demand"]));
+    const isSaturdayUtc = new Date().getUTCDay() === 6;
+    const settingsRows = await db
+      .select()
+      .from(userSettings)
+      .where(
+        isSaturdayUtc
+          ? or(eq(userSettings.cadenceMode, "daily"), eq(userSettings.cadenceMode, "weekly"))
+          : eq(userSettings.cadenceMode, "daily"),
+      );
     let usersProcessed = 0;
     let draftsGenerated = 0;
 
     for (const settings of settingsRows) {
       try {
-        if (settings.cadenceMode === "weekly" && new Date().getUTCDay() !== 6) continue;
         usersProcessed += 1;
         const userId = settings.userId;
         const sensitivitySettings = {
