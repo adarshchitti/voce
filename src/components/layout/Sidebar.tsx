@@ -181,22 +181,26 @@ export default function Sidebar({ mobileOnly = false }: { mobileOnly?: boolean }
     return (
       <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background md:hidden">
         <div className="flex h-16 items-center justify-around">
-          <Link href="/inbox" className={cn("flex flex-col items-center gap-1 text-xs", isRouteActive(pathname, "/inbox") && "text-foreground")}>
+          <Link href="/inbox" className={cn("flex flex-col items-center gap-1 text-[11px]", isRouteActive(pathname, "/inbox") && "text-foreground")}>
             <div className="relative">
               <Inbox className="h-4 w-4" />
               {pendingCount > 0 ? <Badge className="absolute -right-3 -top-2 h-4 px-1 text-[10px]">{pendingCount}</Badge> : null}
             </div>
             Inbox
           </Link>
-          <Link href="/projects" className={cn("flex flex-col items-center gap-1 text-xs", isRouteActive(pathname, "/projects") && "text-foreground")}>
+          <Link href="/projects" className={cn("flex flex-col items-center gap-1 text-[11px]", isRouteActive(pathname, "/projects") && "text-foreground")}>
             <FolderKanban className="h-4 w-4" />
             Projects
           </Link>
-          <Link href="/insights" className={cn("flex flex-col items-center gap-1 text-xs", isRouteActive(pathname, "/insights") && "text-foreground")}>
+          <Link href="/history" className={cn("flex flex-col items-center gap-1 text-[11px]", isRouteActive(pathname, "/history") && "text-foreground")}>
+            <CheckCircle className="h-4 w-4" />
+            History
+          </Link>
+          <Link href="/insights" className={cn("flex flex-col items-center gap-1 text-[11px]", isRouteActive(pathname, "/insights") && "text-foreground")}>
             <Sparkles className="h-4 w-4" />
             Insights
           </Link>
-          <Link href="/settings" className={cn("flex flex-col items-center gap-1 text-xs", isRouteActive(pathname, "/settings") && "text-foreground")}>
+          <Link href="/settings" className={cn("flex flex-col items-center gap-1 text-[11px]", isRouteActive(pathname, "/settings") && "text-foreground")}>
             <Settings className="h-4 w-4" />
             Settings
           </Link>
