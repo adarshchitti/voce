@@ -3,7 +3,7 @@
 import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, ChevronRight, Clock, ExternalLink, FileText, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle, ChevronRight, Clock, ExternalLink, FileText, Inbox, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { useToast } from "@/components/Toast";
@@ -93,6 +93,60 @@ function RetryButton({ postId }: { postId: string }) {
         <>
           <RefreshCw className="h-3 w-3" />
           Retry
+        </>
+      )}
+    </button>
+  );
+}
+
+function MoveToInboxButton({
+  postId,
+  onSuccess,
+}: {
+  postId: string;
+  onSuccess: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
+
+  async function handleMove() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/unschedule`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error ?? "Failed to move post", "error");
+      } else {
+        showToast("Moved back to inbox", "success", {
+          label: "Go to inbox",
+          href: "/inbox",
+        });
+        onSuccess();
+      }
+    } catch {
+      showToast("Something went wrong", "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleMove}
+      disabled={loading}
+      className="inline-flex items-center gap-1.5 h-7 px-3 text-[12px] rounded-md border border-[#E5E7EB] bg-white text-[#374151] hover:bg-[#EFF6FF] hover:text-[#2563EB] hover:border-[#BFDBFE] disabled:opacity-50 transition-colors"
+    >
+      {loading ? (
+        <>
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Moving...
+        </>
+      ) : (
+        <>
+          <Inbox className="h-3 w-3" />
+          Move to inbox
         </>
       )}
     </button>
@@ -211,7 +265,15 @@ function EmptyState({ filter }: { filter: FilterKey }) {
   );
 }
 
-function PostRow({ post, isLast }: { post: Post; isLast: boolean }) {
+function PostRow({
+  post,
+  isLast,
+  onMoveSuccess,
+}: {
+  post: Post;
+  isLast: boolean;
+  onMoveSuccess: (postId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const firstLine = post.contentSnapshot.split("\n")[0] ?? "";
   return (
@@ -251,6 +313,16 @@ function PostRow({ post, isLast }: { post: Post; isLast: boolean }) {
               {post.failureReason}
             </div>
           ) : null}
+          {post.status === "scheduled" ? (
+            <p className="text-[11px] text-[#6B7280] mb-2 mt-3">
+              This post is scheduled. Moving it back to your inbox will cancel the scheduled publish.
+            </p>
+          ) : null}
+          {post.status === "publishing" ? (
+            <p className="text-[11px] text-[#D97706] mb-2 mt-3">
+              This post is currently being published. Moving it back may not prevent it from posting.
+            </p>
+          ) : null}
           <p className="mb-3 whitespace-pre-wrap text-[13px] leading-relaxed text-[#374151]">{post.contentSnapshot}</p>
           <div className="flex flex-wrap items-center gap-2">
             {post.status === "published" && post.linkedinPostId ? (
@@ -265,6 +337,9 @@ function PostRow({ post, isLast }: { post: Post; isLast: boolean }) {
               </a>
             ) : null}
             {post.status === "failed" ? <RetryButton postId={post.id} /> : null}
+            {["scheduled", "publishing", "failed"].includes(post.status) ? (
+              <MoveToInboxButton postId={post.id} onSuccess={() => onMoveSuccess(post.id)} />
+            ) : null}
             {post.status === "published" ? <ManualMetrics post={post} /> : null}
           </div>
         </div>
@@ -279,6 +354,10 @@ export default function HistoryPage() {
   useEffect(() => {
     fetch("/api/posts").then((r) => r.json()).then((d) => setPosts(d.posts ?? []));
   }, []);
+
+  function handleMoveSuccess(postId: string) {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }
 
   const counts = useMemo(
     () => ({
@@ -332,7 +411,14 @@ export default function HistoryPage() {
         {filteredPosts.length === 0 ? (
           <EmptyState filter={filter} />
         ) : (
-          filteredPosts.map((post, i) => <PostRow key={post.id} post={post} isLast={i === filteredPosts.length - 1} />)
+          filteredPosts.map((post, i) => (
+            <PostRow
+              key={post.id}
+              post={post}
+              isLast={i === filteredPosts.length - 1}
+              onMoveSuccess={handleMoveSuccess}
+            />
+          ))
         )}
       </div>
     </div>
