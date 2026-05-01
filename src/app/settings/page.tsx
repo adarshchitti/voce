@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
@@ -442,10 +442,34 @@ export default function SettingsPage() {
   const [suggestingTopicIndex, setSuggestingTopicIndex] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<"voice" | "topics" | "scheduling" | "linkedin" | "account">("voice");
   const { showToast } = useToast();
+  const hasHydratedVoiceTextFields = useRef(false);
+  const touchedVoiceTextFields = useRef({
+    rawDescription: false,
+    userNotes: false,
+    personalContext: false,
+  });
 
   function applyVoiceProfileFromApi(vp: Record<string, unknown> | null | undefined) {
     if (!vp) return;
-    setRawDescription((vp.rawDescription as string) ?? "");
+    const incomingRawDescription = (vp.rawDescription as string) ?? "";
+    const incomingUserNotes = (vp.userNotes as string) ?? "";
+    const incomingPersonalContext = (vp.personalContext as string) ?? "";
+    if (!hasHydratedVoiceTextFields.current) {
+      setRawDescription(incomingRawDescription);
+      setUserNotes(incomingUserNotes);
+      setPersonalContext(incomingPersonalContext);
+      hasHydratedVoiceTextFields.current = true;
+    } else {
+      if (!touchedVoiceTextFields.current.rawDescription) {
+        setRawDescription(incomingRawDescription);
+      }
+      if (!touchedVoiceTextFields.current.userNotes) {
+        setUserNotes(incomingUserNotes);
+      }
+      if (!touchedVoiceTextFields.current.personalContext) {
+        setPersonalContext(incomingPersonalContext);
+      }
+    }
     setSamplePosts(parseLoadedSamplePosts(vp.samplePosts as string[] | undefined));
     setSentenceLength((vp.sentenceLength as string | null) ?? null);
     setHookStyle((vp.hookStyle as string | null) ?? null);
@@ -464,8 +488,6 @@ export default function SettingsPage() {
     setEmojiFrequency(extracted?.emojiFrequency ?? null);
     setEmojiNeverOverride(Boolean(vp.emojiNeverOverride));
     setUserBannedWordsText(((vp.userBannedWords as string[]) ?? []).join(", "));
-    setUserNotes((vp.userNotes as string) ?? "");
-    setPersonalContext((vp.personalContext as string) ?? "");
   }
 
   useEffect(() => {
@@ -960,7 +982,10 @@ export default function SettingsPage() {
                     rows={3}
                     maxLength={3000}
                     value={rawDescription}
-                    onChange={(e) => setRawDescription(e.target.value)}
+                    onChange={(e) => {
+                      touchedVoiceTextFields.current.rawDescription = true;
+                      setRawDescription(e.target.value);
+                    }}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
@@ -996,7 +1021,10 @@ export default function SettingsPage() {
                     rows={2}
                     maxLength={500}
                     value={userNotes}
-                    onChange={(e) => setUserNotes(e.target.value)}
+                    onChange={(e) => {
+                      touchedVoiceTextFields.current.userNotes = true;
+                      setUserNotes(e.target.value);
+                    }}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
@@ -1007,7 +1035,10 @@ export default function SettingsPage() {
                     rows={2}
                     maxLength={500}
                     value={personalContext}
-                    onChange={(e) => setPersonalContext(e.target.value)}
+                    onChange={(e) => {
+                      touchedVoiceTextFields.current.personalContext = true;
+                      setPersonalContext(e.target.value);
+                    }}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
