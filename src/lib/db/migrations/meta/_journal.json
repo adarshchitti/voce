@@ -43,6 +43,13 @@
       "when": 1777605859480,
       "tag": "0005_wide_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777759239079,
+      "tag": "0006_mushy_the_phantom",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons, researchItems, topicSubscriptions, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
+import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
@@ -77,11 +78,22 @@ export async function POST() {
       candidate.sourceType === "tavily_news" ||
       (!!candidate.publishedAt && Date.now() - candidate.publishedAt.getTime() <= 48 * 60 * 60 * 1000);
 
+    const topicMatch = matchTopicSubscriptionForResearchItem(subscriptions, {
+      url: candidate.url,
+      title: candidate.title,
+      summary: candidate.summary,
+      sourceType: candidate.sourceType,
+    });
+
     const [draft] = await db
       .insert(draftQueue)
       .values({
         userId,
         researchItemId: candidate.id,
+        ...(topicMatch && {
+          topicSubscriptionId: topicMatch.topicSubscriptionId,
+          topicLabel: topicMatch.topicLabel,
+        }),
         draftText: generated.draftText,
         hook: generated.hook,
         format: generated.format,

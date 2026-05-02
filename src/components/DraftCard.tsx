@@ -49,6 +49,7 @@ export type DraftView = {
   seriesPosition?: number | null;
   seriesContext?: string | null;
   seriesTitle?: string | null;
+  topicLabel?: string | null;
 };
 
 function isNearStale(staleAfter: string | Date): boolean {
@@ -214,6 +215,12 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
                 : "Project"}
               {currentDraft.seriesPosition ? ` · #${currentDraft.seriesPosition}` : ""}
             </a>
+          ) : null}
+
+          {currentDraft.topicLabel ? (
+            <span className="rounded-full border border-[#E5E7EB] bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280]">
+              {currentDraft.topicLabel}
+            </span>
           ) : null}
 
           {currentDraft.voiceScore != null ? (

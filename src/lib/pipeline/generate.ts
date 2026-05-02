@@ -1,4 +1,5 @@
 import { and, desc, eq, lte, notInArray, or, sql } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   cronRuns,
@@ -12,6 +13,78 @@ import {
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
+
+function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boolean {
+  const s = sourceUrl.trim();
+  if (!s) return false;
+  try {
+    const item = new URL(itemUrl);
+    const src = new URL(s);
+    const itemHost = item.hostname.replace(/^www\./, "");
+    const srcHost = src.hostname.replace(/^www\./, "");
+    if (itemHost === srcHost) return true;
+  } catch {
+    /* ignore */
+  }
+  return itemUrl.includes(s) || s.includes(itemUrl);
+}
+
+/** Pick the user's topic subscription that best matches how this research item was sourced (RSS URL overlap, then title/summary keywords). */
+export function matchTopicSubscriptionForResearchItem(
+  subscriptions: InferSelectModel<typeof topicSubscriptions>[],
+  item: { url: string; title: string; summary: string | null; sourceType: string },
+): { topicSubscriptionId: string; topicLabel: string } | null {
+  if (!subscriptions.length) return null;
+
+  const rssMatches: InferSelectModel<typeof topicSubscriptions>[] = [];
+  for (const sub of subscriptions) {
+    for (const src of sub.sourceUrls ?? []) {
+      if (urlMatchesSubscriptionSource(item.url, src)) {
+        rssMatches.push(sub);
+        break;
+      }
+    }
+  }
+  if (rssMatches.length === 1) {
+    const sub = rssMatches[0];
+    return { topicSubscriptionId: sub.id, topicLabel: sub.topicLabel };
+  }
+  if (rssMatches.length > 1) {
+    const sub = [...rssMatches].sort((a, b) => (b.priorityWeight ?? 3) - (a.priorityWeight ?? 3))[0];
+    return { topicSubscriptionId: sub.id, topicLabel: sub.topicLabel };
+  }
+
+  const haystack = `${item.title} ${item.summary ?? ""}`.toLowerCase();
+  let best: { sub: InferSelectModel<typeof topicSubscriptions>; score: number } | null = null;
+  for (const sub of subscriptions) {
+    const labelTokens = sub.topicLabel
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2);
+    const queryTokens = sub.tavilyQuery
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter((t) => t.length > 2);
+    const tokens = [...new Set([...labelTokens, ...queryTokens])];
+    let score = 0;
+    for (const token of tokens) {
+      if (haystack.includes(token)) score += 1;
+    }
+    if (score > 0) {
+      if (
+        !best ||
+        score > best.score ||
+        (score === best.score && (sub.priorityWeight ?? 3) > (best.sub.priorityWeight ?? 3))
+      ) {
+        best = { sub, score };
+      }
+    }
+  }
+  if (best) {
+    return { topicSubscriptionId: best.sub.id, topicLabel: best.sub.topicLabel };
+  }
+  return null;
+}
 
 export type GenerateUserResult = {
   userId: string;
@@ -125,9 +198,20 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       item.sourceType === "tavily_news" ||
       (!!item.publishedAt && Date.now() - item.publishedAt.getTime() <= 48 * 60 * 60 * 1000);
 
+    const topicMatch = matchTopicSubscriptionForResearchItem(subscriptions, {
+      url: item.url,
+      title: item.title,
+      summary: item.summary,
+      sourceType: item.sourceType,
+    });
+
     await db.insert(draftQueue).values({
       userId,
       researchItemId: item.id,
+      ...(topicMatch && {
+        topicSubscriptionId: topicMatch.topicSubscriptionId,
+        topicLabel: topicMatch.topicLabel,
+      }),
       draftText: generated.draftText,
       hook: generated.hook,
       format: generated.format,

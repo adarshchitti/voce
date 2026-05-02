@@ -1,0 +1,3 @@
+ALTER TABLE "draft_queue" ADD COLUMN "topic_subscription_id" uuid;--> statement-breakpoint
+ALTER TABLE "draft_queue" ADD COLUMN "topic_label" text;--> statement-breakpoint
+ALTER TABLE "draft_queue" ADD CONSTRAINT "draft_queue_topic_subscription_id_topic_subscriptions_id_fk" FOREIGN KEY ("topic_subscription_id") REFERENCES "public"."topic_subscriptions"("id") ON DELETE no action ON UPDATE no action;

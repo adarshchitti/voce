@@ -54,6 +54,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .values({
         userId,
         researchItemId: original.researchItemId,
+        topicSubscriptionId: original.topicSubscriptionId ?? undefined,
+        topicLabel: original.topicLabel ?? undefined,
         draftText: generated.draftText,
         hook: generated.hook,
         format: generated.format,

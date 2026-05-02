@@ -83,6 +83,8 @@ export const draftQueue = pgTable("draft_queue", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: text("user_id").notNull(), // STAGE2: change to uuid
   researchItemId: uuid("research_item_id").references(() => researchItems.id),
+  topicSubscriptionId: uuid("topic_subscription_id").references(() => topicSubscriptions.id),
+  topicLabel: text("topic_label"),
   seriesId: uuid("series_id").references(() => contentSeries.id),
   seriesPosition: integer("series_position"),
   seriesContext: text("series_context"),
