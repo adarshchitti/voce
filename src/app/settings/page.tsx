@@ -1428,20 +1428,19 @@ export default function SettingsPage() {
                 </div>
               ))}
 
-              {topics.length < 5 ? (
-                <button
-                  onClick={() =>
-                    setTopics((prev) => [
-                      ...prev,
-                      { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
-                    ])
-                  }
-                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add topic
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() =>
+                  setTopics((prev) => [
+                    ...prev,
+                    { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
+                  ])
+                }
+                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+              >
+                <Plus className="h-4 w-4" />
+                Add topic
+              </button>
             </div>
             <div className="flex justify-end">
               <button
