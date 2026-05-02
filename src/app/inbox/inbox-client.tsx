@@ -14,12 +14,20 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   const [showSetupBanner, setShowSetupBanner] = useState(true);
   const [showPaymentBannerVisible, setShowPaymentBannerVisible] = useState(showPaymentBanner);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [quickTopic, setQuickTopic] = useState("");
+  const [isQuickGenerating, setIsQuickGenerating] = useState(false);
+  const [quickRemaining, setQuickRemaining] = useState(3);
   const { showToast } = useToast();
 
   const loadDrafts = () => {
     fetch("/api/drafts?status=pending")
       .then((r) => r.json())
-      .then((data) => setDrafts(data.drafts ?? []))
+      .then((data) => {
+        setDrafts(data.drafts ?? []);
+        if (typeof data.quickGenerateRemaining === "number") {
+          setQuickRemaining(data.quickGenerateRemaining);
+        }
+      })
       .catch(() => setDrafts([]));
   };
 
@@ -127,12 +135,80 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
     }
   }
 
+  async function handleQuickGenerate() {
+    if (!quickTopic.trim() || isQuickGenerating || quickRemaining <= 0) return;
+    setIsQuickGenerating(true);
+    try {
+      const res = await fetch("/api/drafts/generate-quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: quickTopic.trim() }),
+      });
+      const data = (await res.json()) as { draftId?: string; remainingToday?: number; error?: string; code?: string };
+      if (!res.ok) {
+        if (res.status === 429) {
+          showToast("You've used all 3 quick generates for today. Resets at midnight.", "error");
+        } else if (res.status === 402) {
+          showToast("Subscription required to generate drafts.", "error");
+        } else if (res.status === 404) {
+          showToast(data.error ?? "No articles found. Try a different topic.", "error");
+        } else {
+          showToast("Could not generate a draft. Try again.", "error");
+        }
+        return;
+      }
+      setQuickTopic("");
+      if (typeof data.remainingToday === "number") setQuickRemaining(data.remainingToday);
+      showToast("Draft added to inbox");
+      loadDrafts();
+    } catch {
+      showToast("Could not generate a draft. Try again.", "error");
+    } finally {
+      setIsQuickGenerating(false);
+    }
+  }
+
+  function renderQuickGenerate() {
+    return (
+      <div className="mb-4 rounded-lg border border-[#E5E7EB] bg-white p-3 shadow-[0_1px_2px_0_rgb(0_0_0/0.05)]">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={quickTopic}
+            onChange={(e) => setQuickTopic(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleQuickGenerate();
+            }}
+            placeholder="What do you want to post about?"
+            disabled={isQuickGenerating || quickRemaining <= 0}
+            className="h-8 flex-1 rounded-md border border-[#E5E7EB] px-3 text-[13px] outline-none placeholder:text-[#9CA3AF] focus:border-[#2563EB] disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => void handleQuickGenerate()}
+            disabled={!quickTopic.trim() || isQuickGenerating || quickRemaining <= 0}
+            className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
+          >
+            {isQuickGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {isQuickGenerating ? "Generating..." : "Generate"}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[11px] text-[#9CA3AF]">
+          {quickRemaining > 0
+            ? `${quickRemaining} of 3 quick generates remaining today`
+            : "Daily limit reached · Resets at midnight UTC"}
+        </p>
+      </div>
+    );
+  }
+
   if (drafts.length === 0) {
     return (
       <div>
         <PageHeader title="Inbox" description="No drafts right now" />
         {renderPaymentFailedBanner()}
         {renderSetupBanner()}
+        {renderQuickGenerate()}
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#F3F4F6]">
             <Inbox className="h-6 w-6 text-[#9CA3AF]" />
@@ -162,6 +238,7 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
       />
       {renderPaymentFailedBanner()}
       {renderSetupBanner()}
+      {renderQuickGenerate()}
       <div className="space-y-4">
         {drafts.map((draft) => (
           <DraftCard

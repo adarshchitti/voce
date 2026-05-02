@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, draftQueue, researchItems } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -43,6 +43,22 @@ export async function GET(request: Request) {
       .orderBy(desc(draftQueue.generatedAt))
       .limit(limit);
 
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    const quickCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(draftQueue)
+      .where(
+        and(
+          eq(draftQueue.userId, userId),
+          eq(draftQueue.source, "quick_generate"),
+          gte(draftQueue.generatedAt, todayStart),
+        ),
+      );
+
+    const quickGenerateRemaining = Math.max(0, 3 - (quickCount[0]?.count ?? 0));
+
     return Response.json({
       drafts: drafts.map((d) => ({
         id: d.id,
@@ -72,6 +88,7 @@ export async function GET(request: Request) {
             }
           : null,
       })),
+      quickGenerateRemaining,
     });
   } catch {
     return Response.json({ error: "Failed to fetch drafts" }, { status: 400 });

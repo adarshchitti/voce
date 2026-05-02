@@ -101,6 +101,8 @@ export const draftQueue = pgTable("draft_queue", {
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   editedText: text("edited_text"),
+  source: text("source").notNull().default("cron"),
+  // 'cron' | 'quick_generate' | 'onboarding'
 });
 
 export const regenerationHistory = pgTable("regeneration_history", {
