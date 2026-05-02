@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue, regenerationHistory, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { sanitiseInstruction } from "@/lib/sanitise";
@@ -10,6 +11,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
+    const { canGenerate } = await getSubscriptionStatus(userId);
+    if (!canGenerate) {
+      return Response.json(
+        { error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" },
+        { status: 402 },
+      );
+    }
     const { id } = await params;
     const body = (await request.json()) as { instruction?: string };
     const instruction = body.instruction ? sanitiseInstruction(body.instruction) : undefined;

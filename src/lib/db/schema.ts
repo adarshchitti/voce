@@ -307,3 +307,19 @@ export const cronRuns = pgTable("cron_runs", {
   errorCount: integer("error_count").notNull().default(0),
   success: boolean("success").notNull().default(true),
 });
+
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().unique(), // STAGE2: change to uuid to match auth.uid()
+  stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
+  status: text("status").notNull().default("trialing"),
+  // 'trialing' | 'active' | 'past_due' | 'canceled' | 'incomplete'
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Subscription = InferSelectModel<typeof subscriptions>;
+export type NewSubscription = InferInsertModel<typeof subscriptions>;

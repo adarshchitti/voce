@@ -2,7 +2,7 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  const publicPaths = ["/login", "/auth/callback", "/api/cron/"];
+  const publicPaths = ["/login", "/auth/callback", "/api/cron/", "/api/billing/webhook"];
   const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
 
   const { supabaseResponse, user } = await updateSession(request);

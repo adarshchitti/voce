@@ -4,6 +4,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, posts, researchItems, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getSubscriptionStatus } from "@/lib/subscription";
 import { calculateScheduledAt } from "@/lib/scheduler";
 import type { publishPostTask } from "@/trigger/publish";
 
@@ -63,6 +64,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
+    const { canPublish } = await getSubscriptionStatus(userId);
+    if (!canPublish) {
+      return Response.json(
+        { error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" },
+        { status: 402 },
+      );
+    }
     const { id } = await params;
     const draft = await db.query.draftQueue.findFirst({ where: and(eq(draftQueue.id, id), eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")) });
     if (!draft) return Response.json({ error: "Draft not found" }, { status: 404 });

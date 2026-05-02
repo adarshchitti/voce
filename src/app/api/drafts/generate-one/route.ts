@@ -2,6 +2,7 @@ import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons, researchItems, topicSubscriptions, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
 import { scanDraftForAITells } from "@/lib/ai/scan-draft";
@@ -11,6 +12,13 @@ export async function POST() {
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
+    const { canGenerate } = await getSubscriptionStatus(userId);
+    if (!canGenerate) {
+      return Response.json(
+        { error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" },
+        { status: 402 },
+      );
+    }
 
     const subscriptions = await db
       .select()

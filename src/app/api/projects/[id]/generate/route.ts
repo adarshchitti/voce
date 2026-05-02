@@ -12,6 +12,7 @@ import {
   voiceProfiles,
 } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getSubscriptionStatus } from "@/lib/subscription";
 import { fetchTavilyItems } from "@/lib/research/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
@@ -90,6 +91,13 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
+    const { canGenerate } = await getSubscriptionStatus(userId);
+    if (!canGenerate) {
+      return Response.json(
+        { error: "Subscription required", code: "SUBSCRIPTION_REQUIRED" },
+        { status: 402 },
+      );
+    }
     const { id: projectId } = await params;
 
     const project = await db.query.contentSeries.findFirst({
