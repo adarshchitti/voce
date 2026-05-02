@@ -75,6 +75,15 @@ export default function LoginPage() {
           </button>
         </form>
 
+        <div className="my-6 border-t border-[#E5E7EB]" />
+
+        <p className="text-center text-[13px] text-[#6B7280]">
+          Don&apos;t have an account?{" "}
+          <a href="/signup" className="font-medium text-[#2563EB] hover:text-[#1D4ED8]">
+            Start your free trial →
+          </a>
+        </p>
+
         <p className="mt-6 text-center text-[11px] text-[#9CA3AF]">Access is by invitation only</p>
       </div>
     </div>

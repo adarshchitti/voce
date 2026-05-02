@@ -71,7 +71,7 @@ export async function POST() {
         trial_period_days: 14,
         metadata: { userId },
       },
-      success_url: `${appUrl}/settings?billing=success`,
+      success_url: `${appUrl}/inbox`,
       cancel_url: `${appUrl}/settings?billing=canceled`,
       allow_promotion_codes: true,
       metadata: { userId },

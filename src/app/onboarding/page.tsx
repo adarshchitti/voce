@@ -61,6 +61,7 @@ function OnboardingPageInner() {
   const [loadingMessage, setLoadingMessage] = useState("Analysing your writing style...");
   const [draftStatus, setDraftStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [draftPreview, setDraftPreview] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   const validPostCount = useMemo(() => samplePosts.filter((post) => post.trim().length >= 100).length, [samplePosts]);
   const completionPct = ((currentStep + 1) / STEPS.length) * 100;
@@ -529,15 +530,38 @@ function OnboardingPageInner() {
                   </>
                 ) : null}
                 {draftStatus !== "idle" ? (
-                  <button
-                    onClick={async () => {
-                      await markOnboardingComplete();
-                      router.push("/inbox");
-                    }}
-                    className="h-9 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white hover:bg-[#1D4ED8]"
-                  >
-                    Go to inbox →
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={async () => {
+                        setCheckoutLoading(true);
+                        try {
+                          const res = await fetch("/api/billing/checkout", { method: "POST" });
+                          const data = (await res.json()) as { url?: string; error?: string };
+                          if (data.url) {
+                            window.location.href = data.url;
+                          } else {
+                            router.push("/inbox");
+                          }
+                        } catch {
+                          router.push("/inbox");
+                        } finally {
+                          setCheckoutLoading(false);
+                        }
+                      }}
+                      disabled={checkoutLoading}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#2563EB] px-5 text-[13px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
+                    >
+                      {checkoutLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {checkoutLoading ? "Loading..." : "Start your free trial →"}
+                    </button>
+                    <p className="text-[12px] text-[#9CA3AF]">14 days free · $10/month after · Cancel anytime</p>
+                    <button
+                      onClick={() => router.push("/inbox")}
+                      className="text-[12px] text-[#9CA3AF] underline underline-offset-2 hover:text-[#6B7280]"
+                    >
+                      Skip for now, go to inbox
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ) : null}
