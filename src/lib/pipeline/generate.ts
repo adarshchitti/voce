@@ -23,7 +23,7 @@ import {
   type RankedCandidate,
 } from "@/lib/ai/judge-research";
 import { fetchTavily, type TavilyResult } from "@/lib/ai/tavily";
-import { computeProjectMultiplier, getPriorityMultiplier } from "@/lib/ai/rank-research";
+import { computeProjectMultiplier, rankPerUserCandidates } from "@/lib/ai/rank-research";
 
 function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boolean {
   const s = sourceUrl.trim();
@@ -420,16 +420,17 @@ async function runPerUserTavilyFlowForUser(input: {
     return skipped;
   }
 
-  // 5. Score each candidate with compound multipliers.
-  const scored = await Promise.all(
-    candidates.map(async (c) => {
-      const userTopicMultiplier = getPriorityMultiplier(c.userTopicWeight);
-      const projectMultiplier = await computeProjectMultiplier(userId, c.sourceTopicId);
-      const finalScore = c.originality * userTopicMultiplier * projectMultiplier;
-      return { ...c, userTopicMultiplier, projectMultiplier, finalScore };
+  // 5. Score each candidate with compound multipliers. Project multipliers
+  //    are looked up once per unique source topic (not once per candidate)
+  //    to keep DB queries proportional to topic count, not pool size.
+  const uniqueTopicIds = [...new Set(candidates.map((c) => c.sourceTopicId))];
+  const projectMultipliers = new Map<string, number>();
+  await Promise.all(
+    uniqueTopicIds.map(async (topicId) => {
+      projectMultipliers.set(topicId, await computeProjectMultiplier(userId, topicId));
     }),
   );
-  scored.sort((a, b) => b.finalScore - a.finalScore);
+  const scored = rankPerUserCandidates(candidates, projectMultipliers);
 
   const needed = Math.max(0, settings.draftsPerDay - pendingCount);
   const selected = scored.slice(0, needed);

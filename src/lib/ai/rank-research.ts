@@ -66,6 +66,40 @@ export function selectProjectMultiplierFromWeights(weights: Array<number | null 
 }
 
 /**
+ * Phase 2 ranking step. Pure: takes candidates and a precomputed map of
+ * project multipliers by topic id, returns the same candidates with
+ * userTopicMultiplier / projectMultiplier / finalScore attached, sorted
+ * desc by finalScore. Stable sort.
+ *
+ * Extracted from runPerUserTavilyFlowForUser so the math is unit-testable.
+ */
+export type PerUserCandidateRankInput = {
+  sourceTopicId: string;
+  userTopicWeight: number;
+  originality: number;
+};
+
+export type PerUserCandidateRanked<C extends PerUserCandidateRankInput> = C & {
+  userTopicMultiplier: number;
+  projectMultiplier: number;
+  finalScore: number;
+};
+
+export function rankPerUserCandidates<C extends PerUserCandidateRankInput>(
+  candidates: C[],
+  projectMultipliers: Map<string, number>,
+): PerUserCandidateRanked<C>[] {
+  const scored = candidates.map((c) => {
+    const userTopicMultiplier = getPriorityMultiplier(c.userTopicWeight);
+    const projectMultiplier = projectMultipliers.get(c.sourceTopicId) ?? 1.0;
+    const finalScore = c.originality * userTopicMultiplier * projectMultiplier;
+    return { ...c, userTopicMultiplier, projectMultiplier, finalScore };
+  });
+  scored.sort((a, b) => b.finalScore - a.finalScore);
+  return scored;
+}
+
+/**
  * Phase 2: returns the project-junction multiplier for a (user, topic) pair.
  * Joins series_topic_subscriptions to content_series so we only count
  * priorities from projects this user actually owns and that are active.
