@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lte, notInArray, or, sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -158,14 +158,20 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     .orderBy(desc(draftQueue.generatedAt))
     .limit(200);
   const excludeIds = recentDrafts.map((r) => r.id).filter((v): v is string => Boolean(v));
+  const recencyCutoff = sql`now() - interval '72 hours'`;
+  const recencyPredicate = gt(researchItems.publishedAt, recencyCutoff);
   const candidates = await db
     .select()
     .from(researchItems)
-    .where(excludeIds.length ? notInArray(researchItems.id, excludeIds) : undefined)
+    .where(
+      excludeIds.length
+        ? and(recencyPredicate, notInArray(researchItems.id, excludeIds))
+        : recencyPredicate,
+    )
     .orderBy(
       desc(sql`coalesce(${researchItems.relevanceScore}, 0) + coalesce(${researchItems.originalityScore}, 0)`),
     )
-    .limit(20);
+    .limit(30);
   const needed = Math.max(0, settings.draftsPerDay - pendingCount.value);
   const selected = candidates.slice(0, needed);
   const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
