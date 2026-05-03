@@ -18,7 +18,7 @@ import { fetchTavilyItems } from "@/lib/ai/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
-import { getPriorityAdjustedScore } from "@/lib/ai/rank-research";
+import { getMatchedPriorityWeight, getPriorityAdjustedScore } from "@/lib/ai/rank-research";
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -69,24 +69,6 @@ function looksRelatedToTopics(input: { title: string; summary: string | null; to
       .filter(Boolean)
       .some((token) => token.length > 2 && haystack.includes(token)),
   );
-}
-
-function getMatchedPriorityWeight(input: {
-  title: string;
-  summary: string | null;
-  linkedTopics: Array<{ topicLabel: string; priorityWeight: number }>;
-}) {
-  const haystack = `${input.title} ${input.summary ?? ""}`.toLowerCase();
-  let best = 3;
-  for (const topic of input.linkedTopics) {
-    const matched = topic.topicLabel
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean)
-      .some((token) => token.length > 2 && haystack.includes(token));
-    if (matched) best = Math.max(best, topic.priorityWeight ?? 3);
-  }
-  return best;
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
