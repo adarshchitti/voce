@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { contentSeries, draftQueue, researchItems } from "@/lib/db/schema";
+import { contentSeries, draftQueue, researchItems, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
@@ -59,6 +59,14 @@ export async function GET(request: Request) {
 
     const quickGenerateRemaining = Math.max(0, 3 - (quickCount[0]?.count ?? 0));
 
+    const settingsRow = await db
+      .select({ lastCronStatus: userSettings.lastCronStatus, lastCronAt: userSettings.lastCronAt })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    const lastCronStatus = settingsRow[0]?.lastCronStatus ?? null;
+    const lastCronAt = settingsRow[0]?.lastCronAt ? settingsRow[0].lastCronAt.toISOString() : null;
+
     return Response.json({
       drafts: drafts.map((d) => ({
         id: d.id,
@@ -89,6 +97,8 @@ export async function GET(request: Request) {
           : null,
       })),
       quickGenerateRemaining,
+      lastCronStatus,
+      lastCronAt,
     });
   } catch {
     return Response.json({ error: "Failed to fetch drafts" }, { status: 400 });

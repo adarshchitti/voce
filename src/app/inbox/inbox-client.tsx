@@ -17,6 +17,8 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   const [quickTopic, setQuickTopic] = useState("");
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
   const [quickRemaining, setQuickRemaining] = useState(3);
+  const [lastCronStatus, setLastCronStatus] = useState<string | null>(null);
+  const [lastCronAt, setLastCronAt] = useState<string | null>(null);
   const { showToast } = useToast();
 
   const loadDrafts = () => {
@@ -27,6 +29,8 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
         if (typeof data.quickGenerateRemaining === "number") {
           setQuickRemaining(data.quickGenerateRemaining);
         }
+        setLastCronStatus(data.lastCronStatus ?? null);
+        setLastCronAt(data.lastCronAt ?? null);
       })
       .catch(() => setDrafts([]));
   };
@@ -203,6 +207,10 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   }
 
   if (drafts.length === 0) {
+    const cronRanRecently =
+      lastCronAt !== null && Date.now() - new Date(lastCronAt).getTime() < 24 * 60 * 60 * 1000;
+    const cronProducedNothing = cronRanRecently && lastCronStatus === "success_no_drafts";
+
     return (
       <div>
         <PageHeader title="Inbox" description="No drafts right now" />
@@ -213,10 +221,22 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#F3F4F6]">
             <Inbox className="h-6 w-6 text-[#9CA3AF]" />
           </div>
-          <h3 className="mb-1 text-[15px] font-semibold text-[#111827]">No drafts waiting</h3>
-          <p className="max-w-xs text-[13px] text-[#6B7280]">
-            New drafts are generated overnight. Check back tomorrow morning, or generate one now.
-          </p>
+          {cronProducedNothing ? (
+            <>
+              <h3 className="mb-1 text-[15px] font-semibold text-[#111827]">No on-topic research today</h3>
+              <p className="max-w-sm text-[13px] text-[#6B7280]">
+                Nothing in today&apos;s research closely matched your topics. We&apos;ll keep looking
+                tomorrow. To generate a draft on a specific topic right now, use Quick Generate above.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="mb-1 text-[15px] font-semibold text-[#111827]">No drafts waiting</h3>
+              <p className="max-w-xs text-[13px] text-[#6B7280]">
+                New drafts are generated overnight. Check back tomorrow morning, or generate one now.
+              </p>
+            </>
+          )}
           <Button className="mt-4" onClick={handleGenerateDraft} disabled={isGenerating}>
             {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             Generate a draft now
