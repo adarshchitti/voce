@@ -73,6 +73,7 @@ export type GenerateDraftInput = {
   emojiContexts?: string[] | null;
   emojiExamples?: string[] | null;
   emojiNeverOverride?: boolean | null;
+  tellFlagEmDash?: boolean | null;
   userBannedWords?: string[] | null;
   userNotes?: string | null;
   extractedPatterns?: unknown;
@@ -121,14 +122,12 @@ export function buildGenerationPrompts(input: GenerateDraftInput): {
   const hasStructuredFields = input.sentenceLength || input.hookStyle || input.pov;
   const hasGuidance = Boolean(input.generationGuidance?.trim());
 
-  // sanitiseBannedWords strips the em-dash character, so detect intent on the
-  // raw input before sanitisation. Used both to surface "em dashes (—)" in the
-  // user-overrides block and to override the AI_TELL_BLOCKLIST line further down.
-  const userBannedEmDash = (input.userBannedWords ?? []).some((w) => w.includes("—"));
-  const bannedWordsForPrompt = [
-    ...(safe.userBannedWords ?? []),
-    ...(userBannedEmDash ? ["em dashes (—)"] : []),
-  ];
+  // user_settings.tell_flag_em_dash is the canonical "user does not want em
+  // dashes" signal. We previously keyed off userBannedWords containing "—",
+  // but sanitiseBannedWords strips the em-dash character on save, so that path
+  // never fires from the normal save flow.
+  const userWantsNoEmDash = input.tellFlagEmDash === true;
+  const bannedWordsForPrompt = safe.userBannedWords ?? [];
   const hasUserOverrides = bannedWordsForPrompt.length > 0 || Boolean(safe.userNotes);
   const userOverridesBlock = hasUserOverrides
     ? [
@@ -299,7 +298,7 @@ ${input.rulesManifest}\n`
   // Brittle: relies on the exact text of the em-dash line in AI_TELL_BLOCKLIST_PROMPT.
   // If that line changes, the override silently no-ops. If this becomes load-bearing,
   // refactor AI_TELL_BLOCKLIST_PROMPT into a builder that accepts user overrides.
-  if (userBannedEmDash) {
+  if (userWantsNoEmDash) {
     systemPrompt = systemPrompt.replace(
       "Do NOT use em dashes — in more than one sentence per post",
       "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",

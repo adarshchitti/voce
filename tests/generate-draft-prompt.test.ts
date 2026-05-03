@@ -12,20 +12,56 @@ const baseInput: GenerateDraftInput = {
   rejections: [],
 };
 
-describe("buildGenerationPrompts user_banned_words leakage fix", () => {
-  it("renders userOverridesBlock with em-dash hard ban and overrides AI_TELL_BLOCKLIST line when user banned em dashes", () => {
+describe("buildGenerationPrompts em-dash trigger keys off tellFlagEmDash", () => {
+  it("tellFlagEmDash=true with empty userBannedWords: em dash override fires, no userOverridesBlock", () => {
     const { systemPrompt } = buildGenerationPrompts({
       ...baseInput,
-      userBannedWords: ["—", "leverage"],
-      generationGuidance: "Use varied sentence length. Cite a specific data point.",
+      tellFlagEmDash: true,
+      userBannedWords: [],
+      userNotes: null,
+      generationGuidance: "Use varied sentence length.",
+    });
+
+    expect(systemPrompt).not.toContain("USER PREFERENCES (HARD RULES, NO EXCEPTIONS):");
+    expect(systemPrompt).toContain(
+      "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",
+    );
+    expect(systemPrompt).not.toContain(
+      "Do NOT use em dashes — in more than one sentence per post",
+    );
+  });
+
+  it("tellFlagEmDash=false with em dash in userBannedWords: em dash override does NOT fire", () => {
+    const { systemPrompt } = buildGenerationPrompts({
+      ...baseInput,
+      tellFlagEmDash: false,
+      userBannedWords: ["—"],
+      generationGuidance: "Use varied sentence length.",
+    });
+
+    expect(systemPrompt).toContain(
+      "Do NOT use em dashes — in more than one sentence per post",
+    );
+    expect(systemPrompt).not.toContain(
+      "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",
+    );
+    expect(systemPrompt).not.toContain("characters: em dashes");
+  });
+
+  it("tellFlagEmDash=true with delve in userBannedWords: both em dash override AND userOverridesBlock for delve render", () => {
+    const { systemPrompt } = buildGenerationPrompts({
+      ...baseInput,
+      tellFlagEmDash: true,
+      userBannedWords: ["delve"],
+      generationGuidance: "Use varied sentence length.",
       postStructureTemplate: "Open. Develop. Close.",
     });
 
     expect(systemPrompt).toContain("USER PREFERENCES (HARD RULES, NO EXCEPTIONS):");
-    expect(systemPrompt).toContain("Never use these words or characters:");
-    expect(systemPrompt).toContain("em dashes (—)");
-    expect(systemPrompt).toContain("leverage");
+    expect(systemPrompt).toContain("Never use these words or characters: delve");
     expect(systemPrompt).toContain("This is a hard rule that overrides any other guidance below.");
+    expect(systemPrompt).not.toContain("Never use these words or characters: delve, em dashes");
+    expect(systemPrompt).not.toContain("characters: em dashes");
 
     expect(systemPrompt).toContain(
       "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",
@@ -40,7 +76,7 @@ describe("buildGenerationPrompts user_banned_words leakage fix", () => {
     expect(voiceIdx).toBeGreaterThan(overridesIdx);
   });
 
-  it("does not render userOverridesBlock when userBannedWords is empty and userNotes is missing", () => {
+  it("tellFlagEmDash undefined/null and empty userBannedWords: no override, no overrides block", () => {
     const { systemPrompt } = buildGenerationPrompts({
       ...baseInput,
       userBannedWords: [],
@@ -54,9 +90,10 @@ describe("buildGenerationPrompts user_banned_words leakage fix", () => {
     );
   });
 
-  it("renders both userOverridesBlock and the calibrated voice section when both are present", () => {
+  it("renders userOverridesBlock and calibrated voice section together (banned words + generationGuidance)", () => {
     const { systemPrompt } = buildGenerationPrompts({
       ...baseInput,
+      tellFlagEmDash: true,
       userBannedWords: ["synergy", "leverage"],
       userNotes: "Never end with a question.",
       generationGuidance: "Use varied sentence length. Cite a specific data point.",
@@ -81,17 +118,18 @@ describe("buildGenerationPrompts user_banned_words leakage fix", () => {
     expect(voiceIdx).toBeGreaterThan(overridesIdx);
   });
 
-  it("renders userOverridesBlock on the cold-start path (no generationGuidance)", () => {
+  it("renders userOverridesBlock on the cold-start path (no generationGuidance) when banned words are present", () => {
     const { systemPrompt } = buildGenerationPrompts({
       ...baseInput,
-      userBannedWords: ["—"],
+      tellFlagEmDash: true,
+      userBannedWords: ["delve"],
       sentenceLength: "medium",
       hookStyle: "bold_claim",
       pov: "first_person_singular",
     });
 
     expect(systemPrompt).toContain("USER PREFERENCES (HARD RULES, NO EXCEPTIONS):");
-    expect(systemPrompt).toContain("em dashes (—)");
+    expect(systemPrompt).toContain("delve");
     expect(systemPrompt).toContain("VOICE PROFILE (cold-start fallback):");
 
     const overridesIdx = systemPrompt.indexOf("USER PREFERENCES (HARD RULES");

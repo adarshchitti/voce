@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { draftMemories, draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
+import { draftMemories, draftQueue, rejectionReasons, researchItems, userSettings, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return Response.json({ error: "Draft not found" }, { status: 404 });
     }
 
-    const [voiceProfile, recentRejections, researchItem] = await Promise.all([
+    const [voiceProfile, recentRejections, researchItem, settings] = await Promise.all([
       db.query.voiceProfiles.findFirst({
         where: eq(voiceProfiles.userId, userId),
       }),
@@ -38,6 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             where: eq(researchItems.id, draft.researchItemId),
           })
         : null,
+      db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) }),
     ]);
 
     const personalContext = voiceProfile?.personalContext;
@@ -98,6 +99,7 @@ Rules:
       emojiExamples: voiceProfile?.emojiExamples,
       emojiNeverOverride: voiceProfile?.emojiNeverOverride,
       emojiFrequency: (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
       userBannedWords: voiceProfile?.userBannedWords,
       userNotes: voiceProfile?.userNotes,
       extractedPatterns: voiceProfile?.extractedPatterns,

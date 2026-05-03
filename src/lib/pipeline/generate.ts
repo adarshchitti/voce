@@ -453,7 +453,7 @@ async function runPerUserTavilyFlowForUser(input: {
     limit: 10,
   });
   const structureTemplate = await selectStructureTemplate(userId);
-  const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const voiceSlice = buildVoicePromptSlice(voiceProfile, { tellFlagEmDash: settings.tellFlagEmDash ?? true });
   const scanCalibration = voiceProfile?.calibrated
     ? {
         paragraphStyle: voiceProfile.paragraphStyle,
@@ -705,7 +705,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     limit: 10,
   });
   const structureTemplate = await selectStructureTemplate(userId);
-  const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const voiceSlice = buildVoicePromptSlice(voiceProfile, { tellFlagEmDash: settings.tellFlagEmDash ?? true });
   const scanCalibration = voiceProfile?.calibrated
     ? {
         paragraphStyle: voiceProfile.paragraphStyle,

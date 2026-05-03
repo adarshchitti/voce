@@ -41,8 +41,8 @@ const fixtureVoiceProfile = {
 } as Parameters<typeof buildVoicePromptSlice>[0];
 
 describe("buildVoicePromptSlice", () => {
-  it("returns the 16-field slice for a fully populated voice profile (regression snapshot for quick generate)", () => {
-    expect(buildVoicePromptSlice(fixtureVoiceProfile)).toMatchInlineSnapshot(`
+  it("returns the slice for a fully populated voice profile and settings (regression snapshot for quick generate)", () => {
+    expect(buildVoicePromptSlice(fixtureVoiceProfile, { tellFlagEmDash: true })).toMatchInlineSnapshot(`
       {
         "emojiContexts": [
           "sentence_starter",
@@ -66,6 +66,7 @@ describe("buildVoicePromptSlice", () => {
           "worth noting",
           "real talk",
         ],
+        "tellFlagEmDash": true,
         "toneMarkers": [
           "direct",
           "data-driven",
@@ -84,10 +85,17 @@ describe("buildVoicePromptSlice", () => {
     expect(slice.sentenceLength).toBeNull();
     expect(slice.emojiFrequency).toBeNull();
     expect(slice.extractedPatterns).toEqual({});
+    expect(slice.tellFlagEmDash).toBeNull();
   });
 
   it("does not include rawDescription (callers set it; cron and quick differ on it)", () => {
     const slice = buildVoicePromptSlice(fixtureVoiceProfile);
     expect(slice).not.toHaveProperty("rawDescription");
+  });
+
+  it("threads tellFlagEmDash from settings into the slice", () => {
+    expect(buildVoicePromptSlice(fixtureVoiceProfile, { tellFlagEmDash: false }).tellFlagEmDash).toBe(false);
+    expect(buildVoicePromptSlice(fixtureVoiceProfile, { tellFlagEmDash: true }).tellFlagEmDash).toBe(true);
+    expect(buildVoicePromptSlice(fixtureVoiceProfile).tellFlagEmDash).toBeNull();
   });
 });

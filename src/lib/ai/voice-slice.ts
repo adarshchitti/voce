@@ -17,12 +17,16 @@ export type VoicePromptSlice = {
   emojiExamples: VoiceProfile["emojiExamples"];
   emojiNeverOverride: VoiceProfile["emojiNeverOverride"];
   emojiFrequency: string | null;
+  tellFlagEmDash: boolean | null;
   userBannedWords: VoiceProfile["userBannedWords"];
   userNotes: VoiceProfile["userNotes"];
   extractedPatterns: unknown;
 };
 
-export function buildVoicePromptSlice(voiceProfile: VoiceProfile | null | undefined): VoicePromptSlice {
+export function buildVoicePromptSlice(
+  voiceProfile: VoiceProfile | null | undefined,
+  settings?: { tellFlagEmDash?: boolean | null } | null,
+): VoicePromptSlice {
   const emojiFrequency =
     (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null | undefined)?.emojiFrequency ?? null;
   return {
@@ -39,6 +43,7 @@ export function buildVoicePromptSlice(voiceProfile: VoiceProfile | null | undefi
     emojiExamples: voiceProfile?.emojiExamples ?? null,
     emojiNeverOverride: voiceProfile?.emojiNeverOverride ?? null,
     emojiFrequency,
+    tellFlagEmDash: settings?.tellFlagEmDash ?? null,
     userBannedWords: voiceProfile?.userBannedWords ?? null,
     userNotes: voiceProfile?.userNotes ?? null,
     extractedPatterns: voiceProfile?.extractedPatterns ?? {},

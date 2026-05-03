@@ -10,6 +10,7 @@ import {
   researchItems,
   seriesTopicSubscriptions,
   topicSubscriptions,
+  userSettings,
   voiceProfiles,
 } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -226,13 +227,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       previousPostContext,
     });
 
-    const [voiceProfile, recentRejections] = await Promise.all([
+    const [voiceProfile, recentRejections, settings] = await Promise.all([
       db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) }),
       db.query.rejectionReasons.findMany({
         where: eq(rejectionReasons.userId, userId),
         orderBy: [desc(rejectionReasons.createdAt)],
         limit: 10,
       }),
+      db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) }),
     ]);
 
     const structureTemplate = await selectStructureTemplate(userId);
@@ -268,6 +270,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       emojiExamples: voiceProfile?.emojiExamples,
       emojiNeverOverride: voiceProfile?.emojiNeverOverride,
       emojiFrequency: (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
       userBannedWords: voiceProfile?.userBannedWords,
       userNotes: voiceProfile?.userNotes,
       extractedPatterns: voiceProfile?.extractedPatterns ?? {},
