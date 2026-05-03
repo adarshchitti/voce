@@ -22,6 +22,8 @@ import {
   rankJudgedCandidates,
   type RankedCandidate,
 } from "@/lib/ai/judge-research";
+import { fetchTavily, type TavilyResult } from "@/lib/ai/tavily";
+import { computeProjectMultiplier, getPriorityMultiplier } from "@/lib/ai/rank-research";
 
 function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boolean {
   const s = sourceUrl.trim();
@@ -108,6 +110,26 @@ export type GenerateUserResult = {
   judgeUsed: boolean;
   judgeDurationMs: number;
   judgeFallbackReason: string | null;
+  // Phase 2 fields (only populated when daily_research_mode = 'per_user_tavily').
+  // Optional so the legacy global_pool result shape stays unchanged.
+  mode?: "global_pool" | "per_user_tavily";
+  perTopicResults?: Array<{
+    topicId: string;
+    topicLabel: string;
+    status: "success" | "no_results" | "tavily_error";
+    itemCount: number;
+    error?: string;
+  }>;
+  rssPoolSize?: number;
+  selectedMultipliers?: Array<{
+    researchItemId: string;
+    sourceTopicId: string;
+    sourceTopicLabel: string;
+    originality: number;
+    userTopicMultiplier: number;
+    projectMultiplier: number;
+    finalScore: number;
+  }>;
 };
 
 export type GenerateCronResult = {
@@ -196,6 +218,348 @@ async function persistUserCronFailure(userId: string, error: unknown): Promise<v
     .catch(() => undefined);
 }
 
+type PerTopicOutcome = {
+  topic: InferSelectModel<typeof topicSubscriptions>;
+  items: TavilyResult[];
+  status: "success" | "no_results" | "tavily_error";
+  error: string | null;
+};
+
+type PerUserCandidate = {
+  researchItemId: string;
+  sourceTopicId: string;
+  sourceTopicLabel: string;
+  userTopicWeight: number;
+  originality: number;
+  source: "tavily" | "rss";
+  url: string;
+  title: string;
+  summary: string | null;
+  sourceType: string;
+  publishedAt: Date | null;
+};
+
+/**
+ * Phase 2 daily flow. Fetches Tavily live per active topic, augments with
+ * RSS items from the user's source_urls, ranks by
+ * `originality × user_topic_multiplier × project_multiplier`, takes top N.
+ *
+ * No Haiku judge: Tavily relevance is by construction (the search was
+ * derived from the topic's own tavily_query). Behind the
+ * `daily_research_mode = 'per_user_tavily'` user_settings flag.
+ */
+async function runPerUserTavilyFlowForUser(input: {
+  userId: string;
+  settings: InferSelectModel<typeof userSettings>;
+  pendingCount: number;
+}): Promise<GenerateUserResult> {
+  const { userId, settings, pendingCount } = input;
+
+  const topics = await db
+    .select()
+    .from(topicSubscriptions)
+    .where(and(eq(topicSubscriptions.userId, userId), eq(topicSubscriptions.active, true)));
+
+  if (topics.length === 0) {
+    const skipped: GenerateUserResult = {
+      userId,
+      draftsGenerated: 0,
+      skipped: true,
+      reason: "no_active_topics",
+      candidatesConsidered: 0,
+      candidatesPassingThreshold: 0,
+      judgeUsed: false,
+      judgeDurationMs: 0,
+      judgeFallbackReason: null,
+      mode: "per_user_tavily",
+      perTopicResults: [],
+      rssPoolSize: 0,
+    };
+    await persistUserCronResult(skipped);
+    return skipped;
+  }
+
+  // 1. Per-topic Tavily in parallel. Each topic's status is written back to
+  //    topic_subscriptions regardless of outcome (observability).
+  const perTopicOutcomes: PerTopicOutcome[] = await Promise.all(
+    topics.map(async (topic) => {
+      const fetchedAt = new Date();
+      try {
+        const items = await fetchTavily({
+          query: topic.tavilyQuery,
+          maxResults: 5,
+          timeRangeDays: 3,
+        });
+        const status: PerTopicOutcome["status"] = items.length === 0 ? "no_results" : "success";
+        await db
+          .update(topicSubscriptions)
+          .set({ lastResearchFetchAt: fetchedAt, lastResearchFetchStatus: status })
+          .where(eq(topicSubscriptions.id, topic.id))
+          .catch((err) => {
+            console.error(`[per_user_tavily] failed to persist fetch status for topic ${topic.id}`, err);
+          });
+        return { topic, items, status, error: null };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[per_user_tavily] Tavily failed for topic '${topic.topicLabel}' (${topic.id}): ${message}`);
+        await db
+          .update(topicSubscriptions)
+          .set({ lastResearchFetchAt: fetchedAt, lastResearchFetchStatus: "tavily_error" })
+          .where(eq(topicSubscriptions.id, topic.id))
+          .catch(() => undefined);
+        return { topic, items: [], status: "tavily_error", error: message.slice(0, 200) };
+      }
+    }),
+  );
+
+  // 2. Build the candidate list from successful Tavily results, persisting
+  //    each into research_items so the draft_queue.research_item_id FK resolves.
+  const candidates: PerUserCandidate[] = [];
+  for (const outcome of perTopicOutcomes) {
+    if (outcome.status !== "success") continue;
+    const topic = outcome.topic;
+    for (const tavilyItem of outcome.items) {
+      await db
+        .insert(researchItems)
+        .values({
+          url: tavilyItem.url,
+          title: tavilyItem.title,
+          summary: tavilyItem.summary,
+          sourceType: tavilyItem.sourceType,
+          publishedAt: tavilyItem.publishedAt,
+          dedupHash: tavilyItem.dedupHash,
+        })
+        .onConflictDoNothing({ target: researchItems.url });
+      const [persisted] = await db
+        .select()
+        .from(researchItems)
+        .where(eq(researchItems.url, tavilyItem.url))
+        .limit(1);
+      if (!persisted) continue;
+      candidates.push({
+        researchItemId: persisted.id,
+        sourceTopicId: topic.id,
+        sourceTopicLabel: topic.topicLabel,
+        userTopicWeight: topic.priorityWeight ?? 3,
+        originality: persisted.originalityScore != null ? Number(persisted.originalityScore) : 0.5,
+        source: "tavily",
+        url: persisted.url,
+        title: persisted.title,
+        summary: persisted.summary,
+        sourceType: persisted.sourceType,
+        publishedAt: persisted.publishedAt,
+      });
+    }
+  }
+
+  // 3. RSS items: query global pool for source_type='rss' in last 72h, then
+  //    filter to only items whose URL host matches one of the user's
+  //    source_urls and that match a topic via keyword overlap.
+  let rssPoolSize = 0;
+  const flatSourceUrls = topics.flatMap((t) => t.sourceUrls ?? []).filter(Boolean);
+  if (flatSourceUrls.length > 0) {
+    const recencyCutoff = sql`now() - interval '72 hours'`;
+    const recentRss = await db
+      .select()
+      .from(researchItems)
+      .where(and(eq(researchItems.sourceType, "rss"), gt(researchItems.publishedAt, recencyCutoff)));
+    for (const item of recentRss) {
+      const urlInUserSources = flatSourceUrls.some((src) => urlMatchesSubscriptionSource(item.url, src));
+      if (!urlInUserSources) continue;
+      const match = matchTopicSubscriptionForResearchItem(topics, {
+        url: item.url,
+        title: item.title,
+        summary: item.summary,
+        sourceType: item.sourceType,
+      });
+      if (!match) continue;
+      const topic = topics.find((t) => t.id === match.topicSubscriptionId);
+      if (!topic) continue;
+      rssPoolSize += 1;
+      candidates.push({
+        researchItemId: item.id,
+        sourceTopicId: topic.id,
+        sourceTopicLabel: topic.topicLabel,
+        userTopicWeight: topic.priorityWeight ?? 3,
+        originality: item.originalityScore != null ? Number(item.originalityScore) : 0.5,
+        source: "rss",
+        url: item.url,
+        title: item.title,
+        summary: item.summary,
+        sourceType: item.sourceType,
+        publishedAt: item.publishedAt,
+      });
+    }
+  }
+
+  const perTopicResults = perTopicOutcomes.map((o) => ({
+    topicId: o.topic.id,
+    topicLabel: o.topic.topicLabel,
+    status: o.status,
+    itemCount: o.items.length,
+    ...(o.error ? { error: o.error } : {}),
+  }));
+
+  // 4. Empty pool → skip cleanly with the new reason.
+  if (candidates.length === 0) {
+    const skipped: GenerateUserResult = {
+      userId,
+      draftsGenerated: 0,
+      skipped: true,
+      reason: "no_research_available",
+      candidatesConsidered: 0,
+      candidatesPassingThreshold: 0,
+      judgeUsed: false,
+      judgeDurationMs: 0,
+      judgeFallbackReason: null,
+      mode: "per_user_tavily",
+      perTopicResults,
+      rssPoolSize,
+    };
+    await persistUserCronResult(skipped);
+    return skipped;
+  }
+
+  // 5. Score each candidate with compound multipliers.
+  const scored = await Promise.all(
+    candidates.map(async (c) => {
+      const userTopicMultiplier = getPriorityMultiplier(c.userTopicWeight);
+      const projectMultiplier = await computeProjectMultiplier(userId, c.sourceTopicId);
+      const finalScore = c.originality * userTopicMultiplier * projectMultiplier;
+      return { ...c, userTopicMultiplier, projectMultiplier, finalScore };
+    }),
+  );
+  scored.sort((a, b) => b.finalScore - a.finalScore);
+
+  const needed = Math.max(0, settings.draftsPerDay - pendingCount);
+  const selected = scored.slice(0, needed);
+
+  // 6. Generate drafts. Voice handling identical to the legacy flow.
+  const sensitivitySettings = {
+    tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
+      | "always"
+      | "three_plus"
+      | "never",
+    tellFlagEmDash: settings.tellFlagEmDash ?? true,
+    tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
+    tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
+    tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
+  };
+  const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
+  const recentRejections = await db.query.rejectionReasons.findMany({
+    where: eq(rejectionReasons.userId, userId),
+    orderBy: [desc(rejectionReasons.createdAt)],
+    limit: 10,
+  });
+  const structureTemplate = await selectStructureTemplate(userId);
+  const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const topicLabels = topics.map((t) => t.topicLabel);
+  const rawDescription = voiceProfile?.rawDescription ?? topicLabels.join(", ");
+
+  let draftsGenerated = 0;
+  for (const ranking of selected) {
+    const topicCluster = ranking.sourceType ?? "general";
+    const relevantMemories = await db
+      .select({
+        hookFirstLine: draftMemories.hookFirstLine,
+        structureUsed: draftMemories.structureUsed,
+        wordCount: draftMemories.wordCount,
+      })
+      .from(draftMemories)
+      .where(
+        and(
+          eq(draftMemories.userId, userId),
+          eq(draftMemories.approved, true),
+          eq(draftMemories.topicCluster, topicCluster),
+        ),
+      )
+      .orderBy(desc(draftMemories.createdAt))
+      .limit(3);
+
+    const draftParams = {
+      ...voiceSlice,
+      rawDescription,
+      title: ranking.title,
+      summary: ranking.summary ?? "",
+      url: ranking.url,
+      rejections: recentRejections,
+      structureTemplate,
+      relevantMemories,
+      rulesManifest: null,
+    };
+
+    const generated = await generateDraft(draftParams);
+    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
+
+    if (scanResult.hasEngagementBeg) {
+      try {
+        const regenerated = await generateDraft({
+          ...draftParams,
+          instruction:
+            "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
+        });
+        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings);
+        Object.assign(generated, regenerated);
+        Object.assign(scanResult, rescan);
+      } catch {
+        console.error("Engagement beg regeneration failed — proceeding with original");
+      }
+    }
+
+    const voiceScore = voiceProfile?.calibrated
+      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
+      : null;
+    const isRecentNews =
+      ranking.sourceType === "tavily_news" ||
+      (!!ranking.publishedAt && Date.now() - ranking.publishedAt.getTime() <= 48 * 60 * 60 * 1000);
+
+    await db.insert(draftQueue).values({
+      userId,
+      researchItemId: ranking.researchItemId,
+      topicSubscriptionId: ranking.sourceTopicId,
+      topicLabel: ranking.sourceTopicLabel,
+      draftText: generated.draftText,
+      hook: generated.hook,
+      format: generated.format,
+      hashtags: generated.hashtags ?? [],
+      sourceUrls: [ranking.url],
+      voiceScore,
+      aiTellFlags: serializeAiTellFlags(scanResult),
+      status: "pending",
+      staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),
+      structureTemplateId: structureTemplate.id,
+    });
+    draftsGenerated += 1;
+  }
+
+  const result: GenerateUserResult = {
+    userId,
+    draftsGenerated,
+    skipped: false,
+    candidatesConsidered: candidates.length,
+    // No threshold filter in this flow — Tavily relevance is by construction.
+    // Reusing the field to mean "candidates that survived to be ranked".
+    candidatesPassingThreshold: candidates.length,
+    judgeUsed: false,
+    judgeDurationMs: 0,
+    judgeFallbackReason: null,
+    mode: "per_user_tavily",
+    perTopicResults,
+    rssPoolSize,
+    selectedMultipliers: selected.map((s) => ({
+      researchItemId: s.researchItemId,
+      sourceTopicId: s.sourceTopicId,
+      sourceTopicLabel: s.sourceTopicLabel,
+      originality: s.originality,
+      userTopicMultiplier: s.userTopicMultiplier,
+      projectMultiplier: s.projectMultiplier,
+      finalScore: s.finalScore,
+    })),
+  };
+  await persistUserCronResult(result);
+  return result;
+}
+
 export async function runGeneratePipelineForUser(userId: string): Promise<GenerateUserResult> {
   const settings = await db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) });
   if (!settings) return emptyResult(userId, "missing_settings");
@@ -228,6 +592,13 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     .where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")));
   if (pendingCount.value >= settings.draftsPerDay) {
     return emptyResult(userId, "pending_limit_reached");
+  }
+
+  // Phase 2 dispatch. global_pool keeps the Phase 1 flow untouched below.
+  // per_user_tavily takes the new path that fetches Tavily live per topic
+  // and ranks by compound priority multipliers (no Haiku judge).
+  if (settings.dailyResearchMode === "per_user_tavily") {
+    return runPerUserTavilyFlowForUser({ userId, settings, pendingCount: pendingCount.value });
   }
 
   const subscriptions = await db
