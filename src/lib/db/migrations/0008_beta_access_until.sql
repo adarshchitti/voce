@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "beta_access_until" timestamp with time zone;

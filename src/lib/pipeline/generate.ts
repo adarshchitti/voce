@@ -16,6 +16,7 @@ import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
+import { getSubscriptionStatus } from "@/lib/subscription";
 import {
   judgeResearchForUser,
   rankJudgedCandidates,
@@ -199,6 +200,16 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
   const settings = await db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) });
   if (!settings) return emptyResult(userId, "missing_settings");
   if (settings.cadenceMode === "on_demand") return emptyResult(userId, "on_demand");
+
+  // Closes the gap PROJECT_TRUTH.md:271 flagged: cron used to generate drafts
+  // for users with no Stripe subscription. Beta-access users pass this check
+  // via the beta-first branch in getSubscriptionStatus.
+  const access = await getSubscriptionStatus(userId);
+  if (!access.canGenerate) {
+    const skipped = emptyResult(userId, "no_access");
+    await persistUserCronResult(skipped);
+    return skipped;
+  }
 
   const sensitivitySettings = {
     tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as

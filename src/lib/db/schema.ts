@@ -303,6 +303,10 @@ export const userSettings = pgTable("user_settings", {
   // status: null (never run) | 'success_with_drafts' | 'success_no_drafts' | 'failed'
   lastCronStatus: text("last_cron_status"),
   lastCronAt: timestamp("last_cron_at", { withTimezone: true }),
+  // Beta-access bypass that runs ahead of the Stripe subscription gate.
+  // When non-null and in the future, the user has full canGenerate / canPublish
+  // access regardless of subscription state. Expires automatically.
+  betaAccessUntil: timestamp("beta_access_until", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

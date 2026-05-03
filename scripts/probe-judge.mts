@@ -11,10 +11,10 @@ if (!userId) {
   process.exit(1);
 }
 
-const { db } = await import("../src/lib/db/index.ts");
-const { researchItems, topicSubscriptions } = await import("../src/lib/db/schema.ts");
-const { judgeResearchForUser, JUDGE_RELEVANCE_THRESHOLD } = await import("../src/lib/ai/judge-research.ts");
-const { getPriorityMultiplier } = await import("../src/lib/ai/rank-research.ts");
+const { db } = await import("../src/lib/db/index");
+const { researchItems, topicSubscriptions } = await import("../src/lib/db/schema");
+const { judgeResearchForUser, JUDGE_RELEVANCE_THRESHOLD } = await import("../src/lib/ai/judge-research");
+const { getPriorityMultiplier } = await import("../src/lib/ai/rank-research");
 const { and, desc, eq, gt, sql } = await import("drizzle-orm");
 
 const subs = await db

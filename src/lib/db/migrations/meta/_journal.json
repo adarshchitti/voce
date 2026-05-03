@@ -57,6 +57,13 @@
       "when": 1777835719269,
       "tag": "0007_phase1_user_settings_cron_status",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777837376381,
+      "tag": "0008_beta_access_until",
+      "breakpoints": true
     }
   ]
 }

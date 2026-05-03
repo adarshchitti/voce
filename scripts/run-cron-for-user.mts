@@ -10,7 +10,7 @@ if (!userId) {
   process.exit(1);
 }
 
-const { runGeneratePipelineForUser, archiveStalePendingDrafts } = await import("../src/lib/pipeline/generate.ts");
+const { runGeneratePipelineForUser, archiveStalePendingDrafts } = await import("../src/lib/pipeline/generate");
 const start = Date.now();
 await archiveStalePendingDrafts();
 const result = await runGeneratePipelineForUser(userId);
