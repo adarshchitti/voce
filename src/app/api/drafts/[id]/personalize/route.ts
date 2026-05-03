@@ -1,9 +1,10 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
+import { draftMemories, draftQueue, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
-import { scanDraftForAITells } from "@/lib/ai/scan-draft";
+import { selectStructureTemplate } from "@/lib/ai/structure-templates";
+import { buildAiTellFlagsJson, scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
@@ -64,6 +65,25 @@ Rules:
 - The personal element should feel earned, not tacked on
 `.trim();
 
+    const structureTemplate = await selectStructureTemplate(userId);
+    const topicCluster = researchItem?.sourceType ?? "general";
+    const relevantMemories = await db
+      .select({
+        hookFirstLine: draftMemories.hookFirstLine,
+        structureUsed: draftMemories.structureUsed,
+        wordCount: draftMemories.wordCount,
+      })
+      .from(draftMemories)
+      .where(
+        and(
+          eq(draftMemories.userId, userId),
+          eq(draftMemories.approved, true),
+          eq(draftMemories.topicCluster, topicCluster),
+        ),
+      )
+      .orderBy(desc(draftMemories.createdAt))
+      .limit(3);
+
     const result = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,
       hookStyle: voiceProfile?.hookStyle,
@@ -91,6 +111,9 @@ Rules:
         rejectionType: reason.rejectionType,
       })),
       instruction: personalInstruction,
+      structureTemplate,
+      relevantMemories,
+      rulesManifest: null,
     });
 
     const [scanResult, voiceResult] = await Promise.all([
@@ -112,13 +135,10 @@ Rules:
       .set({
         draftText: result.draftText,
         hook: result.hook,
+        structureTemplateId: structureTemplate.id,
         voiceScore,
         editedText: null,
-        aiTellFlags: JSON.stringify({
-          words: scanResult.flaggedWords,
-          structure: scanResult.structureIssues,
-          voice: voiceFlags,
-        }),
+        aiTellFlags: buildAiTellFlagsJson(scanResult, voiceFlags),
       })
       .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
 

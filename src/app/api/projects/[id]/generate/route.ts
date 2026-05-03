@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   contentSeries,
+  draftMemories,
   draftQueue,
   posts,
   rejectionReasons,
@@ -16,6 +17,7 @@ import { getSubscriptionStatus } from "@/lib/subscription";
 import { fetchTavilyItems } from "@/lib/research/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
+import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { getPriorityAdjustedScore } from "@/lib/ai/rank-research";
 
 function getClient() {
@@ -251,6 +253,25 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       }),
     ]);
 
+    const structureTemplate = await selectStructureTemplate(userId);
+    const topicCluster = topResearch.sourceType ?? "general";
+    const relevantMemories = await db
+      .select({
+        hookFirstLine: draftMemories.hookFirstLine,
+        structureUsed: draftMemories.structureUsed,
+        wordCount: draftMemories.wordCount,
+      })
+      .from(draftMemories)
+      .where(
+        and(
+          eq(draftMemories.userId, userId),
+          eq(draftMemories.approved, true),
+          eq(draftMemories.topicCluster, topicCluster),
+        ),
+      )
+      .orderBy(desc(draftMemories.createdAt))
+      .limit(3);
+
     const generated = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,
       hookStyle: voiceProfile?.hookStyle,
@@ -274,6 +295,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       url: topResearch.url,
       rejections: recentRejections,
       projectContext,
+      structureTemplate,
+      relevantMemories,
+      rulesManifest: null,
     });
 
     const isRecentNews =
@@ -293,6 +317,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         seriesId: projectId,
         seriesPosition,
         staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),
+        structureTemplateId: structureTemplate.id,
       })
       .returning();
 

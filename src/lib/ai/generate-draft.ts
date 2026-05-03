@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AI_TELL_BLOCKLIST_PROMPT } from "@/lib/ai/ai-tells";
+import type { StructureTemplate } from "@/lib/ai/structure-templates";
 import { sanitiseGenerationPromptInputs } from "@/lib/ai/prompts";
 import { sanitiseShortText, FIELD_LIMITS } from "@/lib/sanitise";
 
@@ -9,6 +10,53 @@ function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
   return new Anthropic({ apiKey });
+}
+
+async function callGeneration(
+  client: Anthropic,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<{ hook: string; draftText: string; hashtags: string[]; characterCount: number }> {
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1000,
+    temperature: 0.9,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userMessage }],
+  });
+  const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
+  const clean = text.replace(/```json\n?|```\n?/g, "").trim();
+  return JSON.parse(clean) as { hook: string; draftText: string; hashtags: string[]; characterCount: number };
+}
+
+function scoreCandidate(
+  draft: { draftText: string },
+  _voiceProfile: { sentenceLength?: string | null; pov?: string | null },
+): number {
+  let score = 0;
+  const text = draft.draftText;
+
+  const aiTells = ["leverage", "paradigm", "ecosystem", "tapestry", "pivotal", "groundbreaking", "transformative", "holistic"];
+  for (const tell of aiTells) {
+    if (text.toLowerCase().includes(tell)) score -= 1;
+  }
+
+  const contractions = (text.match(/\b(I'm|I've|I'd|don't|can't|it's|we're|you're|they're|isn't|wasn't|wouldn't)\b/gi) ?? []).length;
+  score += Math.min(contractions, 3);
+
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  if (sentences.length >= 3) {
+    const lengths = sentences.map((s) => s.trim().split(/\s+/).length);
+    const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+    const variance = lengths.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / lengths.length;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    if (cv > 0.5) score += 2;
+    if (cv > 0.8) score += 1;
+  }
+
+  if (/what do you think|drop a comment|let me know|agree\?/i.test(text)) score -= 3;
+
+  return score;
 }
 
 export async function generateDraft(input: {
@@ -35,9 +83,14 @@ export async function generateDraft(input: {
   rejections: Array<{ reasonCode: string; freeText: string | null; rejectionType?: string | null }>;
   instruction?: string;
   projectContext?: string | null;
+  structureTemplate?: StructureTemplate | null;
+  relevantMemories?: Array<{
+    hookFirstLine: string | null;
+    structureUsed: string | null;
+    wordCount: number | null;
+  }> | null;
+  rulesManifest?: string | null;
 }) {
-  // SECURITY: All user content must be sanitised before injection.
-  // Do not remove these calls — they prevent prompt injection attacks.
   const safe = sanitiseGenerationPromptInputs({
     userNotes: input.userNotes,
     rawDescription: input.rawDescription,
@@ -100,18 +153,20 @@ Prefer these observed emojis: ${(input.emojiExamples ?? []).join(", ") || "none"
 Never use 🔥💡✨🚀🎯💪 unless they appear in the user's observed emoji_examples.
 Never use emojis as bullet-point substitutes.`;
 
-  const client = getClient();
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1000,
-    system: `You are a ghostwriter for a LinkedIn content creator. Your sole job is to write posts
-that sound EXACTLY like this specific person - not like generic LinkedIn AI content.
+  const expertFrame = `You are ghostwriting a LinkedIn post for a specific person. Your job is not to
+summarise the source article — it is to share a sharp, specific observation
+that this person would genuinely make, in their exact voice.
 
-${voiceSection}
+Write as a thoughtful expert sharing something they noticed, not as a content
+creator optimising for engagement. The post must feel like it came from a person
+with strong opinions and real experience — not from someone who studied what
+performs well on LinkedIn.
 
-${emojiRuleBlock}
+Do NOT write like an AI assistant. Do NOT provide balanced summaries. Do NOT hedge
+with "many people believe" or general observations anyone could make.
+Write with conviction, specificity, and first-person ownership.`;
 
-Legacy categorical context:
+  const legacyCategorical = `Legacy categorical context:
 - Sentence length: ${input.sentenceLength ?? "medium"}
 - Hook style: ${input.hookStyle ?? "bold_claim"}
 - Point of view: ${input.pov ?? "first_person_singular"}
@@ -121,18 +176,102 @@ Legacy categorical context:
 Raw voice description from the creator:
 ${safe.rawDescription}
 
-${safe.projectContext?.trim() ? `---\n${safe.projectContext}\n---` : ""}
+${safe.projectContext?.trim() ? `---\n${safe.projectContext}\n---` : ""}`;
 
-STRICT RULES:
+  const structuralRequirements = `REQUIRED IN EVERY POST:
+- At least one specific proper noun (a real person, company, product, tool, or place)
+- At least one non-round number (not 3, 5, 7, 10, 50, 100 — something real like 23%, 11 months, $4.2M)
+- At least one paragraph over 35 words — you may have others that are shorter
+- Sentence length must vary substantially — mix short punchy sentences with longer ones. Do not write all sentences at 15-20 words.
+- Use contractions in first-person sentences (I'm, I've, I'd, don't, can't, it's)`;
+
+  const structureBlock = input.structureTemplate
+    ? `\nPOST STRUCTURE FOR THIS DRAFT (follow this exactly):
+${input.structureTemplate.instruction}\n`
+    : "";
+
+  const contrastiveBlock = `
+EXAMPLE OF WHAT NOT TO WRITE (generic AI LinkedIn style — this post would fail):
+---
+Leadership isn't about titles. It's about impact.
+
+In today's rapidly evolving landscape, the most successful leaders understand
+that true growth comes from within. Here are 5 lessons I've learned:
+
+1. Lead with empathy
+2. Embrace vulnerability  
+3. Foster psychological safety
+4. Communicate with nuance
+5. Drive transformative change
+
+The future belongs to those who invest in their people.
+
+What leadership lesson resonates most with you? Drop a comment below! 🚀
+---
+
+ANOTHER EXAMPLE OF WHAT NOT TO WRITE:
+---
+Hot take: most people are thinking about AI completely wrong.
+
+It's not about the technology. It's about the mindset.
+
+The companies winning with AI aren't the ones with the biggest budgets.
+
+They're the ones willing to fail fast, learn faster, and iterate.
+
+Here's what separates the winners from the rest:
+→ They start with problems, not tools
+→ They empower their teams
+→ They embrace uncertainty
+
+AI isn't coming for your job. But someone using AI better than you might be.
+
+Thoughts? 👇
+---
+
+The user's post must sound NOTHING like these examples.`.trim();
+
+  const memoriesBlock = input.relevantMemories?.length
+    ? `\nRECENT APPROVED POSTS ON THIS TOPIC (use these hook styles as reference — do not copy):
+${input.relevantMemories
+  .filter((m) => m.hookFirstLine)
+  .map(
+    (m) =>
+      `- "${m.hookFirstLine}" (${m.structureUsed ?? "unknown"} structure, ~${m.wordCount ?? "?"} words)`,
+  )
+  .join("\n")}\n`
+    : "";
+
+  // rulesManifest will be populated by the correction loop (not yet built).
+  // This injection point is wired in now so Part 2 can populate it without
+  // touching this file again.
+  const rulesBlock = input.rulesManifest?.trim()
+    ? `\nLEARNED STYLE RULES (extracted from this user's editing history — follow these):
+${input.rulesManifest}\n`
+    : "\nLEARNED STYLE RULES (extracted from this user's editing history): none yet.\n";
+
+  const strictRules = `STRICT RULES:
 - Never exceed 3000 characters total (LinkedIn's hard limit)
 - Every factual claim must come directly from the provided source article
-- Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}
+- Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}`;
 
-${AI_TELL_BLOCKLIST_PROMPT}`,
-    messages: [
-      {
-        role: "user",
-        content: `Write a LinkedIn post based on this article.
+  const systemPrompt = [
+    expertFrame,
+    voiceSection,
+    emojiRuleBlock,
+    legacyCategorical,
+    structuralRequirements,
+    structureBlock,
+    contrastiveBlock,
+    memoriesBlock,
+    rulesBlock,
+    strictRules,
+    AI_TELL_BLOCKLIST_PROMPT,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const userMessage = `Write a LinkedIn post based on this article.
 
 Article title: ${sanitiseShortText(input.title, 500)}
 Article summary: ${sanitiseShortText(input.summary, FIELD_LIMITS.samplePost)}
@@ -164,19 +303,20 @@ HASHTAG RULES:
 - Return hashtag strings without the # prefix (add it when assembling)
 
 The draftText must include the hook as its first line.
-Total draftText length must be under 3000 characters.`,
-      },
-    ],
-  });
+Total draftText length must be under 3000 characters.`;
 
-  const text = response.content[0]?.type === "text" ? response.content[0].text : "{}";
-  const clean = text.replace(/```json\n?|```\n?/g, "").trim();
-  const parsed = JSON.parse(clean) as {
-    hook: string;
-    draftText: string;
-    hashtags: string[];
-    characterCount: number;
-  };
+  const client = getClient();
+
+  const [rawA, rawB] = await Promise.all([
+    callGeneration(client, systemPrompt, userMessage),
+    callGeneration(client, systemPrompt, userMessage),
+  ]);
+
+  const scoreA = scoreCandidate(rawA, { sentenceLength: input.sentenceLength, pov: input.pov });
+  const scoreB = scoreCandidate(rawB, { sentenceLength: input.sentenceLength, pov: input.pov });
+
+  const parsed = scoreA >= scoreB ? rawA : rawB;
+
   const hashtags = (parsed.hashtags ?? []).filter((tag) => tag.length > 0).slice(0, 3);
   const finalText =
     hashtags.length > 0 ? `${parsed.draftText}\n\n${hashtags.map((tag) => `#${tag}`).join(" ")}` : parsed.draftText;

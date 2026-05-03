@@ -3,6 +3,7 @@ import type { InferSelectModel } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   cronRuns,
+  draftMemories,
   draftQueue,
   rejectionReasons,
   researchItems,
@@ -11,7 +12,8 @@ import {
   voiceProfiles,
 } from "@/lib/db/schema";
 import { generateDraft } from "@/lib/ai/generate-draft";
-import { scanDraftForAITells } from "@/lib/ai/scan-draft";
+import { selectStructureTemplate } from "@/lib/ai/structure-templates";
+import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
 function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boolean {
@@ -173,9 +175,29 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     limit: 10,
   });
 
+  const structureTemplate = await selectStructureTemplate(userId);
+
   let draftsGenerated = 0;
   for (const item of selected) {
-    const generated = await generateDraft({
+    const topicCluster = item.sourceType ?? "general";
+    const relevantMemories = await db
+      .select({
+        hookFirstLine: draftMemories.hookFirstLine,
+        structureUsed: draftMemories.structureUsed,
+        wordCount: draftMemories.wordCount,
+      })
+      .from(draftMemories)
+      .where(
+        and(
+          eq(draftMemories.userId, userId),
+          eq(draftMemories.approved, true),
+          eq(draftMemories.topicCluster, topicCluster),
+        ),
+      )
+      .orderBy(desc(draftMemories.createdAt))
+      .limit(3);
+
+    const draftParams = {
       sentenceLength: voiceProfile?.sentenceLength,
       hookStyle: voiceProfile?.hookStyle,
       pov: voiceProfile?.pov,
@@ -189,8 +211,29 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       summary: item.summary ?? "",
       url: item.url,
       rejections: recentRejections,
-    });
-    const scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
+      structureTemplate,
+      relevantMemories,
+      rulesManifest: null,
+    };
+
+    const generated = await generateDraft(draftParams);
+    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
+
+    if (scanResult.hasEngagementBeg) {
+      try {
+        const regenerated = await generateDraft({
+          ...draftParams,
+          instruction:
+            "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
+        });
+        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings);
+        Object.assign(generated, regenerated);
+        Object.assign(scanResult, rescan);
+      } catch {
+        console.error("Engagement beg regeneration failed — proceeding with original");
+      }
+    }
+
     const voiceScore = voiceProfile?.calibrated
       ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
       : null;
@@ -218,14 +261,10 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       hashtags: generated.hashtags ?? [],
       sourceUrls: [item.url],
       voiceScore,
-      aiTellFlags: scanResult.clean
-        ? null
-        : JSON.stringify({
-            words: scanResult.flaggedWords,
-            structure: scanResult.structureIssues,
-          }),
+      aiTellFlags: serializeAiTellFlags(scanResult),
       status: "pending",
       staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),
+      structureTemplateId: structureTemplate.id,
     });
     draftsGenerated += 1;
   }

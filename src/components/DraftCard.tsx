@@ -57,6 +57,30 @@ function isNearStale(staleAfter: string | Date): boolean {
   return diff > 0 && diff < 12 * 60 * 60 * 1000;
 }
 
+function parseAiTellFlags(raw: string | null): {
+  words: string[];
+  phrases: string[];
+  structureIssues: string[];
+  structural: Record<string, unknown> | null;
+  markdownStripped: boolean;
+  voice?: string[];
+} {
+  if (!raw) return { words: [], phrases: [], structureIssues: [], structural: null, markdownStripped: false };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      words: (parsed.words as string[]) ?? [],
+      phrases: (parsed.phrases as string[]) ?? [],
+      structureIssues: ((parsed.structureIssues ?? parsed.structure) as string[]) ?? [],
+      structural: (parsed.structural as Record<string, unknown>) ?? null,
+      markdownStripped: (parsed.markdownStripped as boolean) ?? false,
+      voice: Array.isArray(parsed.voice) ? (parsed.voice as string[]) : undefined,
+    };
+  } catch {
+    return { words: [], phrases: [], structureIssues: [], structural: null, markdownStripped: false };
+  }
+}
+
 export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRemoved: () => void }) {
   const [currentDraft, setCurrentDraft] = useState(draft);
   const [isEditing, setIsEditing] = useState(false);
@@ -184,18 +208,14 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   }
 
   const charCount = editedText.length;
-  const aiFlags = (() => {
-    if (!currentDraft.aiTellFlags) return null;
-    try {
-      return JSON.parse(currentDraft.aiTellFlags) as { words: string[]; structure: string[]; voice?: string[] };
-    } catch {
-      return null;
-    }
-  })();
-  const hasFlags = !!aiFlags && (aiFlags.words.length > 0 || aiFlags.structure.length > 0 || (aiFlags.voice?.length ?? 0) > 0);
-  const aiFlagItems = hasFlags
-    ? [...(aiFlags?.words ?? []), ...(aiFlags?.structure ?? []), ...(aiFlags?.voice ?? [])]
-    : [];
+  const aiParsed = parseAiTellFlags(currentDraft.aiTellFlags ?? null);
+  const lacksSpecificity = aiParsed.structural?.lacksConcreteness === true;
+  const hasFlags =
+    aiParsed.words.length > 0 ||
+    aiParsed.phrases.length > 0 ||
+    aiParsed.structureIssues.length > 0 ||
+    (aiParsed.voice?.length ?? 0) > 0 ||
+    lacksSpecificity;
   const previewText = editedText || currentDraft.draftText;
   const isNearExpiry = isNearStale(draft.staleAfter);
 
@@ -243,6 +263,11 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[11px] font-medium text-[#D97706]">
               <AlertTriangle className="h-2.5 w-2.5" />
               AI tells detected
+            </span>
+          ) : null}
+          {lacksSpecificity ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[11px] font-medium text-[#B45309]">
+              Low specificity
             </span>
           ) : null}
 
@@ -379,10 +404,53 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
         ) : null}
 
         {hasFlags ? (
-          <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1.5 text-[11px] text-[#D97706]">
-            <span className="font-medium">Detected: </span>
-            {aiFlagItems.join(" · ")}
+          <div className="space-y-2 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-2 text-[11px] text-[#92400E]">
+            {aiParsed.words.length > 0 ? (
+              <div>
+                <p className="mb-1 font-medium text-[#D97706]">Flagged words</p>
+                <div className="flex flex-wrap gap-1">
+                  {aiParsed.words.map((w) => (
+                    <span key={w} className="rounded-md border border-[#FDE68A] bg-white/80 px-1.5 py-0.5 text-[10px] text-[#B45309]">
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {aiParsed.phrases.length > 0 ? (
+              <div>
+                <p className="mb-1 font-medium text-[#D97706]">Flagged phrases</p>
+                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
+                  {aiParsed.phrases.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {aiParsed.structureIssues.length > 0 ? (
+              <div>
+                <p className="mb-1 font-medium text-[#D97706]">Structure</p>
+                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
+                  {aiParsed.structureIssues.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {(aiParsed.voice?.length ?? 0) > 0 ? (
+              <div>
+                <p className="mb-1 font-medium text-[#D97706]">Voice calibration</p>
+                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
+                  {(aiParsed.voice ?? []).map((v) => (
+                    <li key={v}>{v}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
+        ) : null}
+        {aiParsed.markdownStripped ? (
+          <p className="text-[10px] text-[#9CA3AF]">Markdown formatting was removed from this draft for scanning.</p>
         ) : null}
 
         <div className="flex items-center justify-between gap-2 pt-0.5">

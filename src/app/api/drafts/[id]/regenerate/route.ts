@@ -1,9 +1,17 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { draftQueue, regenerationHistory, rejectionReasons, researchItems, voiceProfiles } from "@/lib/db/schema";
+import {
+  draftMemories,
+  draftQueue,
+  regenerationHistory,
+  rejectionReasons,
+  researchItems,
+  voiceProfiles,
+} from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
+import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { sanitiseInstruction } from "@/lib/sanitise";
 
@@ -29,6 +37,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!researchItem) return Response.json({ error: "Research item missing" }, { status: 400 });
     const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
     const rejections = await db.query.rejectionReasons.findMany({ where: eq(rejectionReasons.userId, userId), orderBy: [desc(rejectionReasons.createdAt)], limit: 10 });
+
+    const structureTemplate = await selectStructureTemplate(userId);
+    const topicCluster = researchItem.sourceType ?? "general";
+    const relevantMemories = await db
+      .select({
+        hookFirstLine: draftMemories.hookFirstLine,
+        structureUsed: draftMemories.structureUsed,
+        wordCount: draftMemories.wordCount,
+      })
+      .from(draftMemories)
+      .where(
+        and(
+          eq(draftMemories.userId, userId),
+          eq(draftMemories.approved, true),
+          eq(draftMemories.topicCluster, topicCluster),
+        ),
+      )
+      .orderBy(desc(draftMemories.createdAt))
+      .limit(3);
+
     const generated = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,
       hookStyle: voiceProfile?.hookStyle,
@@ -52,6 +80,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       url: researchItem.url,
       rejections,
       instruction,
+      structureTemplate,
+      relevantMemories,
+      rulesManifest: null,
     });
     const voiceResult = voiceProfile?.calibrated ? await scoreVoiceDetailed({ voiceProfile, draftText: generated.draftText }) : null;
     const voiceScore = voiceResult?.score ?? null;
@@ -73,6 +104,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         status: "pending",
         regenerationCount: nextSequence,
         staleAfter: original.staleAfter,
+        structureTemplateId: structureTemplate.id,
       })
       .returning();
     await db.insert(regenerationHistory).values({

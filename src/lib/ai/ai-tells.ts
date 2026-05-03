@@ -2,38 +2,33 @@
 // Injected into every generation prompt and used in post-generation scan
 
 export const AI_TELL_BLOCKLIST_PROMPT = `
-BANNED WORDS — never use any of these under any circumstances:
-delve, underscore, tapestry, nuanced, leverage (as a verb), ecosystem, paradigm,
-foster, crucial, navigate (metaphorically), unleash, supercharge, revolutionize,
-pivotal, groundbreaking, game-changing, transformative, holistic, robust,
-synergy, spearhead, cutting-edge, innovative, seamlessly, streamline,
-dive deep, unpack, double-click (metaphorically), circle back
+WORD CHOICES — always prefer the simpler word:
+- "use" not "leverage", "utilize", or "employ"
+- "show" not "demonstrate", "illustrate", or "underscore"
+- "build" not "develop", "construct", or "create" (unless create is genuinely right)
+- "find" not "discover", "uncover", or "identify"
+- "change" not "transform", "revolutionize", or "reimagine"
+- "important" not "crucial", "pivotal", "paramount", or "critical"
+- "different" not "unique", "unprecedented", or "novel"
+- "help" not "empower", "enable", or "foster"
+- "use" not "harness" or "leverage"
+- "think about" not "navigate" (metaphorically)
+- "big" not "transformative", "groundbreaking", or "game-changing"
+- Specific concrete adjectives over "robust", "holistic", "seamless", "comprehensive"
+- Specific names over "ecosystem", "landscape", "paradigm", "tapestry", "realm"
 
-BANNED PHRASES — never use:
-- "it's important to note"
-- "in conclusion"
-- "I've been thinking about this a lot"
-- "nobody talks about this"
-- "here's what I wish someone told me"
-- "what do you think? drop a comment"
-- "let me know in the comments"
-- "hot take:"
-- "unpopular opinion:"
-- "this changes everything"
-- "the future of X is here"
-- "X is broken. Here's how to fix it."
-- "I failed. Here's what I learned."
-- "years ago, I..." (as an opener)
-
-BANNED STRUCTURES:
-- Do NOT put every sentence on its own line separated by blank lines (the AI accordion)
-- Do NOT use the pattern: hook → numbered list → inspirational closer (the AI sandwich)
-- Do NOT end with an explicit engagement request
+STRUCTURAL RULES:
+- Do NOT put every sentence on its own line separated by blank lines (AI accordion)
+- Do NOT use the pattern: hook → numbered list → inspirational closer (AI sandwich)
+- Do NOT end with any engagement request or question directed at the reader
 - Do NOT use 🚀 💡 🔥 ✅ 💪 🎯 as bullet starters or decoration
 - Do NOT use → or • as bullet substitutes mid-post
 - Do NOT use em dashes — in more than one sentence per post
 - Do NOT use ALL CAPS for emphasis
-- Max 3 hashtags, placed at the very end only if they add value
+- Do NOT open with "I" as the first word of the post
+- Do NOT open with a rhetorical question
+- Max 3 hashtags, placed at the very end only if genuinely specific to the topic
+- Do NOT include any URL in the post body
 `.trim();
 
 export interface SensitivitySettings {

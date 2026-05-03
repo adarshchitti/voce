@@ -101,6 +101,8 @@ export const draftQueue = pgTable("draft_queue", {
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   editedText: text("edited_text"),
+  structureTemplateId: text("structure_template_id"),
+  // which of the 5 structure templates was used — see src/lib/ai/structure-templates.ts
   source: text("source").notNull().default("cron"),
   // 'cron' | 'quick_generate' | 'onboarding'
 });
