@@ -59,7 +59,7 @@ function scoreCandidate(
   return score;
 }
 
-export async function generateDraft(input: {
+export type GenerateDraftInput = {
   sentenceLength?: string | null;
   hookStyle?: string | null;
   pov?: string | null;
@@ -90,7 +90,12 @@ export async function generateDraft(input: {
     wordCount: number | null;
   }> | null;
   rulesManifest?: string | null;
-}) {
+};
+
+export function buildGenerationPrompts(input: GenerateDraftInput): {
+  systemPrompt: string;
+  userMessage: string;
+} {
   const safe = sanitiseGenerationPromptInputs({
     userNotes: input.userNotes,
     rawDescription: input.rawDescription,
@@ -116,14 +121,33 @@ export async function generateDraft(input: {
   const hasStructuredFields = input.sentenceLength || input.hookStyle || input.pov;
   const hasGuidance = Boolean(input.generationGuidance?.trim());
 
+  // sanitiseBannedWords strips the em-dash character, so detect intent on the
+  // raw input before sanitisation. Used both to surface "em dashes (—)" in the
+  // user-overrides block and to override the AI_TELL_BLOCKLIST line further down.
+  const userBannedEmDash = (input.userBannedWords ?? []).some((w) => w.includes("—"));
+  const bannedWordsForPrompt = [
+    ...(safe.userBannedWords ?? []),
+    ...(userBannedEmDash ? ["em dashes (—)"] : []),
+  ];
+  const hasUserOverrides = bannedWordsForPrompt.length > 0 || Boolean(safe.userNotes);
+  const userOverridesBlock = hasUserOverrides
+    ? [
+        "USER PREFERENCES (HARD RULES, NO EXCEPTIONS):",
+        bannedWordsForPrompt.length > 0
+          ? `- Never use these words or characters: ${bannedWordsForPrompt.join(", ")}. Not once. Zero. This is a hard rule that overrides any other guidance below.`
+          : null,
+        safe.userNotes ? `- Additional notes from the user: ${safe.userNotes}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+
   const legacyVoiceSection = hasStructuredFields
     ? `- Sentence length: ${input.sentenceLength ?? "medium"}
 - Hook style: ${input.hookStyle ?? "bold_claim"}
 - Point of view: ${input.pov ?? "first_person_singular"}
 - Tone: ${input.toneMarkers?.join(", ") ?? "professional, direct"}
-- Formatting: ${input.formattingStyle ?? "emoji_light"}
-- Additional notes: ${safe.userNotes ?? "none"}
-- Never use these words/phrases: ${safe.userBannedWords?.join(", ") ?? "none"}`
+- Formatting: ${input.formattingStyle ?? "emoji_light"}`
     : JSON.stringify(input.extractedPatterns);
   const voiceSection = hasGuidance
     ? `VOICE PROFILE:
@@ -255,8 +279,9 @@ ${input.rulesManifest}\n`
 - Every factual claim must come directly from the provided source article
 - Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}`;
 
-  const systemPrompt = [
+  let systemPrompt = [
     expertFrame,
+    userOverridesBlock,
     voiceSection,
     emojiRuleBlock,
     legacyCategorical,
@@ -270,6 +295,16 @@ ${input.rulesManifest}\n`
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  // Brittle: relies on the exact text of the em-dash line in AI_TELL_BLOCKLIST_PROMPT.
+  // If that line changes, the override silently no-ops. If this becomes load-bearing,
+  // refactor AI_TELL_BLOCKLIST_PROMPT into a builder that accepts user overrides.
+  if (userBannedEmDash) {
+    systemPrompt = systemPrompt.replace(
+      "Do NOT use em dashes — in more than one sentence per post",
+      "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",
+    );
+  }
 
   const userMessage = `Write a LinkedIn post based on this article.
 
@@ -305,6 +340,11 @@ HASHTAG RULES:
 The draftText must include the hook as its first line.
 Total draftText length must be under 3000 characters.`;
 
+  return { systemPrompt, userMessage };
+}
+
+export async function generateDraft(input: GenerateDraftInput) {
+  const { systemPrompt, userMessage } = buildGenerationPrompts(input);
   const client = getClient();
 
   const [rawA, rawB] = await Promise.all([

@@ -454,6 +454,13 @@ async function runPerUserTavilyFlowForUser(input: {
   });
   const structureTemplate = await selectStructureTemplate(userId);
   const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const scanCalibration = voiceProfile?.calibrated
+    ? {
+        paragraphStyle: voiceProfile.paragraphStyle,
+        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
+        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
+      }
+    : undefined;
   const topicLabels = topics.map((t) => t.topicLabel);
   const rawDescription = voiceProfile?.rawDescription ?? topicLabels.join(", ");
 
@@ -490,7 +497,7 @@ async function runPerUserTavilyFlowForUser(input: {
     };
 
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
+    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings, scanCalibration);
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -499,7 +506,7 @@ async function runPerUserTavilyFlowForUser(input: {
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings);
+        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings, scanCalibration);
         Object.assign(generated, regenerated);
         Object.assign(scanResult, rescan);
       } catch {
@@ -699,6 +706,13 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
   });
   const structureTemplate = await selectStructureTemplate(userId);
   const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const scanCalibration = voiceProfile?.calibrated
+    ? {
+        paragraphStyle: voiceProfile.paragraphStyle,
+        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
+        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
+      }
+    : undefined;
   const rawDescription = voiceProfile?.rawDescription ?? topics.join(", ");
 
   let draftsGenerated = 0;
@@ -735,7 +749,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     };
 
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings);
+    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings, scanCalibration);
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -744,7 +758,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings);
+        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings, scanCalibration);
         Object.assign(generated, regenerated);
         Object.assign(scanResult, rescan);
       } catch {

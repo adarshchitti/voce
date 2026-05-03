@@ -156,8 +156,16 @@ export async function POST(req: Request) {
       rulesManifest: null,
     };
 
+    const scanCalibration = voiceProfile?.calibrated
+      ? {
+          paragraphStyle: voiceProfile.paragraphStyle,
+          listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
+          usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
+        }
+      : undefined;
+
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText);
+    let scanResult = await scanDraftForAITells(generated.draftText, undefined, scanCalibration);
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -166,7 +174,7 @@ export async function POST(req: Request) {
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText);
+        const rescan = await scanDraftForAITells(regenerated.draftText, undefined, scanCalibration);
         Object.assign(generated, regenerated);
         Object.assign(scanResult, rescan);
       } catch {
