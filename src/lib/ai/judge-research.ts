@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getPriorityMultiplier } from "@/lib/ai/rank-research";
 
 export const JUDGE_RELEVANCE_THRESHOLD = 0.4;
-export const JUDGE_TIMEOUT_MS = 8000;
+export const JUDGE_TIMEOUT_MS = 30000;
 export const JUDGE_MODEL = "claude-haiku-4-5-20251001";
 
 export type JudgeCandidate = {
