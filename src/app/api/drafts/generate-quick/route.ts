@@ -16,6 +16,7 @@ import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { fetchTavilyItems } from "@/lib/research/tavily";
+import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
 
 const DAILY_LIMIT = 3;
 
@@ -154,22 +155,7 @@ export async function POST(req: Request) {
       .limit(3);
 
     const draftParams = {
-      sentenceLength: voiceProfile?.sentenceLength,
-      hookStyle: voiceProfile?.hookStyle,
-      pov: voiceProfile?.pov,
-      toneMarkers: voiceProfile?.toneMarkers,
-      formattingStyle: voiceProfile?.formattingStyle,
-      paragraphStyle: voiceProfile?.paragraphStyle,
-      postStructureTemplate: voiceProfile?.postStructureTemplate,
-      signaturePhrases: voiceProfile?.signaturePhrases,
-      generationGuidance: voiceProfile?.generationGuidance,
-      emojiContexts: voiceProfile?.emojiContexts,
-      emojiExamples: voiceProfile?.emojiExamples,
-      emojiNeverOverride: voiceProfile?.emojiNeverOverride,
-      emojiFrequency: (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
-      userBannedWords: voiceProfile?.userBannedWords,
-      userNotes: voiceProfile?.userNotes,
-      extractedPatterns: voiceProfile?.extractedPatterns ?? {},
+      ...buildVoicePromptSlice(voiceProfile),
       rawDescription: topic,
       title: candidate.title,
       summary: candidate.summary ?? "",
