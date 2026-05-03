@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { cronRuns, researchItems, topicSubscriptions } from "@/lib/db/schema";
 import { scoreResearchItem } from "@/lib/ai/score-research";
 import { fetchRssItems } from "@/lib/research/rss";
-import { fetchTavilyItems } from "@/lib/research/tavily";
+import { fetchTavilyItems } from "@/lib/ai/tavily";
 
 export type ResearchPipelineResult = {
   fetched: number;

@@ -15,7 +15,7 @@ import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
-import { fetchTavilyItems } from "@/lib/research/tavily";
+import { fetchTavily } from "@/lib/ai/tavily";
 import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
 
 const DAILY_LIMIT = 3;
@@ -69,23 +69,13 @@ export async function POST(req: Request) {
       );
     }
 
-    let newsResults: Awaited<ReturnType<typeof fetchTavilyItems>> = [];
-    let searchResults: Awaited<ReturnType<typeof fetchTavilyItems>> = [];
+    let results: Awaited<ReturnType<typeof fetchTavily>> = [];
     try {
-      newsResults = await fetchTavilyItems(topic, "news");
+      results = await fetchTavily({ query: topic });
     } catch {
-      /* fall through to search */
+      results = [];
     }
-    const topFromNews = newsResults[0];
-    let topResult = topFromNews;
-    if (!topResult) {
-      try {
-        searchResults = await fetchTavilyItems(topic, "search");
-      } catch {
-        searchResults = [];
-      }
-      topResult = searchResults[0];
-    }
+    const topResult = results[0];
 
     if (!topResult) {
       return Response.json(

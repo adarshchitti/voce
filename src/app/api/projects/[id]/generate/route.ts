@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getSubscriptionStatus } from "@/lib/subscription";
-import { fetchTavilyItems } from "@/lib/research/tavily";
+import { fetchTavilyItems } from "@/lib/ai/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
