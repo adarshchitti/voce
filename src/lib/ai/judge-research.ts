@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getPriorityMultiplier } from "@/lib/ai/rank-research";
 
 export const JUDGE_RELEVANCE_THRESHOLD = 0.4;
 export const JUDGE_TIMEOUT_MS = 8000;
@@ -27,6 +28,76 @@ export type JudgeVerdict = {
 export type JudgeRunResult =
   | { ok: true; verdicts: JudgeVerdict[]; durationMs: number }
   | { ok: false; reason: string; durationMs: number };
+
+export type RankableCandidate = {
+  id: string;
+  relevanceScore?: string | number | null;
+  originalityScore?: string | number | null;
+};
+
+export type RankableTopic = {
+  id: string;
+  priorityWeight?: number | null;
+};
+
+export type RankedCandidate<T extends RankableCandidate> = {
+  item: T;
+  relevance: number;
+  matchedTopicId: string | null;
+  judgeReason: string;
+  finalScore: number;
+};
+
+/**
+ * Pure ranking step shared by the daily-cron pipeline. Applies the judge
+ * threshold + priority-weight multiplier on the happy path; falls back to
+ * deterministic global score ordering when the judge returned !ok.
+ *
+ * Sort is descending by finalScore; ties are stable.
+ */
+export function rankJudgedCandidates<T extends RankableCandidate>(input: {
+  candidates: T[];
+  topicsById: Map<string, RankableTopic>;
+  judgeOutcome: JudgeRunResult;
+  threshold?: number;
+}): RankedCandidate<T>[] {
+  const threshold = input.threshold ?? JUDGE_RELEVANCE_THRESHOLD;
+  const ranked: RankedCandidate<T>[] = [];
+
+  if (input.judgeOutcome.ok) {
+    const verdictsById = new Map<string, JudgeVerdict>();
+    for (const v of input.judgeOutcome.verdicts) verdictsById.set(v.research_item_id, v);
+    for (const item of input.candidates) {
+      const verdict = verdictsById.get(item.id);
+      if (!verdict) continue;
+      if (verdict.relevance < threshold) continue;
+      const topic = verdict.matched_topic_id ? input.topicsById.get(verdict.matched_topic_id) : undefined;
+      const multiplier = getPriorityMultiplier(topic?.priorityWeight);
+      ranked.push({
+        item,
+        relevance: verdict.relevance,
+        matchedTopicId: verdict.matched_topic_id,
+        judgeReason: verdict.reason,
+        finalScore: verdict.relevance * multiplier,
+      });
+    }
+  } else {
+    for (const item of input.candidates) {
+      const rel = Number(item.relevanceScore ?? 0);
+      const orig = Number(item.originalityScore ?? 0);
+      ranked.push({
+        item,
+        relevance: rel,
+        matchedTopicId: null,
+        judgeReason: "fallback:global_score_order",
+        finalScore: rel + orig,
+      });
+    }
+  }
+
+  ranked.sort((a, b) => b.finalScore - a.finalScore);
+  return ranked;
+}
 
 function getClient(client?: Anthropic): Anthropic {
   if (client) return client;

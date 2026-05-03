@@ -50,6 +50,13 @@
       "when": 1777759239079,
       "tag": "0006_mushy_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777835719269,
+      "tag": "0007_phase1_user_settings_cron_status",
+      "breakpoints": true
     }
   ]
 }

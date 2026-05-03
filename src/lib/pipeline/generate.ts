@@ -15,6 +15,12 @@ import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
+import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
+import {
+  judgeResearchForUser,
+  rankJudgedCandidates,
+  type RankedCandidate,
+} from "@/lib/ai/judge-research";
 
 function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boolean {
   const s = sourceUrl.trim();
@@ -31,7 +37,10 @@ function urlMatchesSubscriptionSource(itemUrl: string, sourceUrl: string): boole
   return itemUrl.includes(s) || s.includes(itemUrl);
 }
 
-/** Pick the user's topic subscription that best matches how this research item was sourced (RSS URL overlap, then title/summary keywords). */
+/**
+ * Legacy keyword-overlap topic matcher. Used by quick generate; the daily
+ * cron now relies on the Haiku judge's matched_topic_id instead.
+ */
 export function matchTopicSubscriptionForResearchItem(
   subscriptions: InferSelectModel<typeof topicSubscriptions>[],
   item: { url: string; title: string; summary: string | null; sourceType: string },
@@ -93,12 +102,18 @@ export type GenerateUserResult = {
   draftsGenerated: number;
   skipped: boolean;
   reason?: string;
+  candidatesConsidered: number;
+  candidatesPassingThreshold: number;
+  judgeUsed: boolean;
+  judgeDurationMs: number;
+  judgeFallbackReason: string | null;
 };
 
 export type GenerateCronResult = {
   usersProcessed: number;
   draftsGenerated: number;
   errors: number;
+  perUser: GenerateUserResult[];
 };
 
 export async function getUsersDueForGenerateRun() {
@@ -120,12 +135,70 @@ export async function archiveStalePendingDrafts() {
     .where(and(eq(draftQueue.status, "pending"), lte(draftQueue.staleAfter, new Date())));
 }
 
+function emptyResult(userId: string, reason: string): GenerateUserResult {
+  return {
+    userId,
+    draftsGenerated: 0,
+    skipped: true,
+    reason,
+    candidatesConsidered: 0,
+    candidatesPassingThreshold: 0,
+    judgeUsed: false,
+    judgeDurationMs: 0,
+    judgeFallbackReason: null,
+  };
+}
+
+async function persistUserCronResult(result: GenerateUserResult): Promise<void> {
+  const status = result.skipped
+    ? null
+    : result.draftsGenerated > 0
+      ? ("success_with_drafts" as const)
+      : ("success_no_drafts" as const);
+  if (status !== null) {
+    await db
+      .update(userSettings)
+      .set({ lastCronStatus: status, lastCronAt: new Date() })
+      .where(eq(userSettings.userId, result.userId))
+      .catch((err) => {
+        console.error("Failed to persist last_cron_status for user:", result.userId, err);
+      });
+  }
+  await db
+    .insert(cronRuns)
+    .values({
+      phase: "generate",
+      result,
+      errorCount: 0,
+      success: result.draftsGenerated > 0,
+    })
+    .catch((err) => {
+      console.error("Failed to log per-user cron run:", err);
+    });
+}
+
+async function persistUserCronFailure(userId: string, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  await db
+    .update(userSettings)
+    .set({ lastCronStatus: "failed", lastCronAt: new Date() })
+    .where(eq(userSettings.userId, userId))
+    .catch(() => undefined);
+  await db
+    .insert(cronRuns)
+    .values({
+      phase: "generate",
+      result: { userId, error: message.slice(0, 500), candidatesConsidered: 0, draftsGenerated: 0 },
+      errorCount: 1,
+      success: false,
+    })
+    .catch(() => undefined);
+}
+
 export async function runGeneratePipelineForUser(userId: string): Promise<GenerateUserResult> {
   const settings = await db.query.userSettings.findFirst({ where: eq(userSettings.userId, userId) });
-  if (!settings) return { userId, draftsGenerated: 0, skipped: true, reason: "missing_settings" };
-  if (settings.cadenceMode === "on_demand") {
-    return { userId, draftsGenerated: 0, skipped: true, reason: "on_demand" };
-  }
+  if (!settings) return emptyResult(userId, "missing_settings");
+  if (settings.cadenceMode === "on_demand") return emptyResult(userId, "on_demand");
 
   const sensitivitySettings = {
     tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
@@ -143,7 +216,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     .from(draftQueue)
     .where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")));
   if (pendingCount.value >= settings.draftsPerDay) {
-    return { userId, draftsGenerated: 0, skipped: true, reason: "pending_limit_reached" };
+    return emptyResult(userId, "pending_limit_reached");
   }
 
   const subscriptions = await db
@@ -151,6 +224,8 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     .from(topicSubscriptions)
     .where(and(eq(topicSubscriptions.userId, userId), eq(topicSubscriptions.active, true)));
   const topics = subscriptions.map((s) => s.topicLabel);
+  const subscriptionsById = new Map(subscriptions.map((s) => [s.id, s]));
+
   const recentDrafts = await db
     .select({ id: draftQueue.researchItemId })
     .from(draftQueue)
@@ -172,19 +247,80 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       desc(sql`coalesce(${researchItems.relevanceScore}, 0) + coalesce(${researchItems.originalityScore}, 0)`),
     )
     .limit(30);
+
   const needed = Math.max(0, settings.draftsPerDay - pendingCount.value);
-  const selected = candidates.slice(0, needed);
+
+  // Per-user judge + priority-weighted ranking. Falls back to deterministic
+  // global-score order if Haiku times out, throws, or returns malformed JSON.
+  let ranked: RankedCandidate<(typeof candidates)[number]>[] = [];
+  let judgeUsed = true;
+  let judgeDurationMs = 0;
+  let judgeFallbackReason: string | null = null;
+
+  if (candidates.length === 0 || subscriptions.length === 0) {
+    judgeUsed = false;
+    judgeFallbackReason = candidates.length === 0 ? "no_candidates_in_window" : "no_active_subscriptions";
+  } else {
+    const judged = await judgeResearchForUser({
+      candidates: candidates.map((c) => ({
+        id: c.id,
+        title: c.title,
+        summary: c.summary ?? "",
+        published_at: c.publishedAt ? c.publishedAt.toISOString() : "",
+      })),
+      userTopics: subscriptions.map((s) => ({
+        id: s.id,
+        topic_label: s.topicLabel,
+        tavily_query: s.tavilyQuery,
+      })),
+    });
+    judgeDurationMs = judged.durationMs;
+    if (!judged.ok) {
+      judgeUsed = false;
+      judgeFallbackReason = judged.reason;
+      console.warn(`[generate] judge fallback for user ${userId}: ${judged.reason}`);
+    }
+    ranked = rankJudgedCandidates({
+      candidates,
+      topicsById: new Map(
+        subscriptions.map((s) => [s.id, { id: s.id, priorityWeight: s.priorityWeight }]),
+      ),
+      judgeOutcome: judged,
+    });
+  }
+
+  const candidatesPassingThreshold = ranked.length;
+  const selected = ranked.slice(0, needed);
+
+  const result: GenerateUserResult = {
+    userId,
+    draftsGenerated: 0,
+    skipped: false,
+    candidatesConsidered: candidates.length,
+    candidatesPassingThreshold,
+    judgeUsed,
+    judgeDurationMs,
+    judgeFallbackReason,
+  };
+
+  if (selected.length === 0) {
+    await persistUserCronResult(result);
+    return result;
+  }
+
   const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
   const recentRejections = await db.query.rejectionReasons.findMany({
     where: eq(rejectionReasons.userId, userId),
     orderBy: [desc(rejectionReasons.createdAt)],
     limit: 10,
   });
-
   const structureTemplate = await selectStructureTemplate(userId);
+  const voiceSlice = buildVoicePromptSlice(voiceProfile);
+  const rawDescription = voiceProfile?.rawDescription ?? topics.join(", ");
 
   let draftsGenerated = 0;
-  for (const item of selected) {
+  for (const ranking of selected) {
+    const item = ranking.item;
     const topicCluster = item.sourceType ?? "general";
     const relevantMemories = await db
       .select({
@@ -204,15 +340,8 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       .limit(3);
 
     const draftParams = {
-      sentenceLength: voiceProfile?.sentenceLength,
-      hookStyle: voiceProfile?.hookStyle,
-      pov: voiceProfile?.pov,
-      toneMarkers: voiceProfile?.toneMarkers,
-      formattingStyle: voiceProfile?.formattingStyle,
-      userBannedWords: voiceProfile?.userBannedWords,
-      userNotes: voiceProfile?.userNotes,
-      extractedPatterns: voiceProfile?.extractedPatterns ?? {},
-      rawDescription: voiceProfile?.rawDescription ?? topics.join(", "),
+      ...voiceSlice,
+      rawDescription,
       title: item.title,
       summary: item.summary ?? "",
       url: item.url,
@@ -247,19 +376,14 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       item.sourceType === "tavily_news" ||
       (!!item.publishedAt && Date.now() - item.publishedAt.getTime() <= 48 * 60 * 60 * 1000);
 
-    const topicMatch = matchTopicSubscriptionForResearchItem(subscriptions, {
-      url: item.url,
-      title: item.title,
-      summary: item.summary,
-      sourceType: item.sourceType,
-    });
+    const matchedSub = ranking.matchedTopicId ? subscriptionsById.get(ranking.matchedTopicId) : undefined;
 
     await db.insert(draftQueue).values({
       userId,
       researchItemId: item.id,
-      ...(topicMatch && {
-        topicSubscriptionId: topicMatch.topicSubscriptionId,
-        topicLabel: topicMatch.topicLabel,
+      ...(matchedSub && {
+        topicSubscriptionId: matchedSub.id,
+        topicLabel: matchedSub.topicLabel,
       }),
       draftText: generated.draftText,
       hook: generated.hook,
@@ -275,7 +399,9 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     draftsGenerated += 1;
   }
 
-  return { userId, draftsGenerated, skipped: false };
+  result.draftsGenerated = draftsGenerated;
+  await persistUserCronResult(result);
+  return result;
 }
 
 export async function runGenerateForDueUsers(): Promise<GenerateCronResult> {
@@ -283,6 +409,7 @@ export async function runGenerateForDueUsers(): Promise<GenerateCronResult> {
   let usersProcessed = 0;
   let draftsGenerated = 0;
   let errors = 0;
+  const perUser: GenerateUserResult[] = [];
   const settingsRows = await getUsersDueForGenerateRun();
 
   for (const settings of settingsRows) {
@@ -290,13 +417,15 @@ export async function runGenerateForDueUsers(): Promise<GenerateCronResult> {
       usersProcessed += 1;
       const result = await runGeneratePipelineForUser(settings.userId);
       draftsGenerated += result.draftsGenerated;
+      perUser.push(result);
     } catch (error) {
       errors += 1;
       console.error("Generate pipeline failed for user:", settings.userId, error);
+      await persistUserCronFailure(settings.userId, error);
     }
   }
 
-  return { usersProcessed, draftsGenerated, errors };
+  return { usersProcessed, draftsGenerated, errors, perUser };
 }
 
 export async function logGenerateRun(startTime: number, result: GenerateCronResult) {

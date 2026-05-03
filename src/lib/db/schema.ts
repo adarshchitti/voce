@@ -299,6 +299,10 @@ export const userSettings = pgTable("user_settings", {
   tellFlagEveryLine: boolean("tell_flag_every_line").notNull().default(true),
   // Flag when every sentence is on its own line (AI accordion)
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  // Phase 1 daily-cron observability: per-user record of the last generation run.
+  // status: null (never run) | 'success_with_drafts' | 'success_no_drafts' | 'failed'
+  lastCronStatus: text("last_cron_status"),
+  lastCronAt: timestamp("last_cron_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
