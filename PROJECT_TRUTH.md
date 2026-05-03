@@ -1,7 +1,7 @@
 # PROJECT_TRUTH.md — Voce Ground Truth
 > Auto-generated from codebase. Update this file whenever something real changes.
 > This is the file other AI sessions read first. Every line must be accurate.
-> Last updated: 2026-05-02
+> Last updated: 2026-05-03
 
 ---
 
@@ -30,6 +30,7 @@ Voce is a LinkedIn-focused AI writing assistant: it ingests research (RSS, Tavil
 | LinkedIn | OAuth + REST | OAuth scope `openid profile email w_member_social`. Publish: `POST https://api.linkedin.com/rest/posts` with header `LinkedIn-Version: 202510` |
 | Billing | Stripe | `stripe` ^22.1.0; Checkout, Customer Portal, webhooks |
 | UI | Tailwind + shadcn/ui | `tailwindcss` 4, `@base-ui/react`, Radix popover, lucide-react |
+| Tests | Vitest 4 | `vitest.config.mts` (ESM); `npm test` runs `vitest run`; tests in `tests/` |
 
 ---
 
@@ -121,14 +122,14 @@ RLS is **not** defined in this repository (no SQL policies in Drizzle schema). I
 | `topic_subscriptions` | User topics + Tavily query | `user_id`, `topic_label`, `tavily_query`, `active` | No |
 | `content_series` | Projects / series | `user_id`, `title`, `goal`, `project_topics`, `auto_generate` | No |
 | `series_topic_subscriptions` | Project ↔ topic link | `series_id`, `topic_subscription_id` | No |
-| `draft_queue` | Generated drafts | `user_id`, `draft_text`, `status`, `stale_after`, `series_id`, `ai_tell_flags` | No |
+| `draft_queue` | Generated drafts | `user_id`, `draft_text`, `status`, `stale_after`, `series_id`, `ai_tell_flags`, `topic_subscription_id`, `topic_label`, `source` (`'cron'` \| `'quick_generate'` \| `'onboarding'`) | No |
 | `regeneration_history` | Regeneration audit | `user_id`, `draft_id`, instruction, before/after text | No |
 | `rejection_reasons` | Rejection taxonomy + free text | `user_id`, `draft_id`, `reason_code`, `rejection_type` | No |
 | `posts` | Scheduled/published posts | `user_id`, `draft_id`, `scheduled_at`, `status`, `linkedin_post_id` | No |
 | `voice_profiles` | Voice calibration + overrides | `user_id` unique, `sample_posts`, stylometric fields, `generation_guidance` | No |
 | `draft_memories` | Approved-draft memory | `user_id`, `approved`, `structure_used`, edit stats | No |
 | `linkedin_tokens` | LinkedIn OAuth tokens | `user_id` unique, `access_token`, `person_urn`, `token_expiry`, `status` | No |
-| `user_settings` | Cadence, tell flags, onboarding | `user_id` PK, `preferred_days`, `onboarding_completed`, tell flags | No |
+| `user_settings` | Cadence, tell flags, onboarding, per-user cron observability, beta access | `user_id` PK, `preferred_days`, `onboarding_completed`, tell flags, `last_cron_status`, `last_cron_at`, `beta_access_until` | No |
 | `cron_runs` | Cron run logs | `phase`, `ran_at`, `result`, `success` | No |
 | `subscriptions` | Stripe subscription mirror | `user_id` unique, `stripe_customer_id`, `stripe_subscription_id`, `status`, trial/period end | No |
 
@@ -153,7 +154,8 @@ Format: `METHOD /api/path` — behavior
 - **POST** `/api/billing/portal` — Authenticated Stripe Customer Portal; return `/settings`.
 - **POST** `/api/billing/webhook` — Stripe signed webhook; updates `subscriptions` (no user auth).
 - **GET** `/api/drafts` — List drafts (query filters).
-- **POST** `/api/drafts/generate-one` — Generate one draft; **402** if `!canGenerate` (subscription).
+- **POST** `/api/drafts/generate-one` — Generate one draft; **402** if `!canGenerate` (beta or subscription).
+- **POST** `/api/drafts/generate-quick` — On-demand quick generate from a typed topic via Tavily; **402** if `!canGenerate`; daily cap of 3 per user.
 - **POST** `/api/drafts/[id]/approve` — Approve + schedule + Trigger publish; **402** if `!canPublish`.
 - **PUT** `/api/drafts/[id]/edit` — Edit draft text.
 - **POST** `/api/drafts/[id]/personalize` — Personalize draft.
@@ -170,7 +172,7 @@ Format: `METHOD /api/path` — behavior
 - **GET** `/api/projects/[id]` — Get project.
 - **PATCH** `/api/projects/[id]` — Update project.
 - **DELETE** `/api/projects/[id]` — Delete project.
-- **POST** `/api/projects/[id]/generate` — Project-scoped draft generation; **402** if `!canGenerate`.
+- **POST** `/api/projects/[id]/generate` — Project-scoped draft generation; **402** if `!canGenerate` (beta or subscription).
 - **POST** `/api/projects/[id]/topics` — Link topic to project.
 - **DELETE** `/api/projects/[id]/topics` — Unlink topic.
 - **GET** `/api/settings` — Settings + LinkedIn token summary.
@@ -238,9 +240,55 @@ Referenced in application source (`src/`, `middleware.ts`, root `trigger.config.
 | File | Task id | Type | Behavior |
 |---|---|---|---|
 | `publish.ts` | `publish-post` | `schemaTask` | Payload: `postId`, `userId`. Calls `runPublishForPost`. Max duration 60s; retries 3. **Triggered from API** (e.g. after approve) with delay. |
-| `generate.ts` | `generate-drafts` | `schedules.task` | Payload schedule: `externalId` = `userId`. Archives stale pending drafts, runs `runGeneratePipelineForUser`. Max 300s. |
+| `generate.ts` | `generate-drafts` | `schedules.task` | Payload schedule: `externalId` = `userId`. Archives stale pending drafts, runs `runGeneratePipelineForUser` (which gates on `getSubscriptionStatus`, runs the Haiku judge, applies priority weights, and writes a per-user `cron_runs` row + updates `user_settings.last_cron_status` / `last_cron_at`). Max 300s. |
 | `research.ts` | `daily-research` | `schedules.task` | Cron `0 2 * * *`. Runs `runResearchPipeline`, `logResearchRun`. Max 600s. |
 | `scheduleUserGenerate.ts` | `schedule-user-generate` | `schemaTask` | Creates/deletes Trigger schedule for `generate-drafts` per user timezone/cadence; `on_demand` deletes schedule. |
+
+---
+
+## Daily Generation Pipeline
+
+`runGeneratePipelineForUser` in `src/lib/pipeline/generate.ts` is the single per-user code path called by both the legacy `runGenerateForDueUsers` cron and the per-user Trigger.dev `generate-drafts` schedule. Step-by-step:
+
+1. **Settings + access check.** Loads `user_settings`. Returns `skipped: true, reason: <kind>` for missing settings, `cadence_mode = 'on_demand'`, `pending_limit_reached`, or `no_access`. The `no_access` check calls `getSubscriptionStatus` and short-circuits if `!canGenerate` — beta users pass via the beta-first branch.
+2. **Candidate selection.** `research_items` filtered by `published_at > now() - interval '72 hours'`, excluding items already drafted by this user, ordered by `coalesce(relevance_score, 0) + coalesce(originality_score, 0) DESC`, limit 30. NULL `published_at` rows are excluded by `gt()` semantics — currently this eliminates all `tavily_search` items from the daily pool.
+3. **Haiku judge.** Single batched call to `judgeResearchForUser` (`src/lib/ai/judge-research.ts`): `claude-haiku-4-5-20251001`, temperature 0.2, `JUDGE_TIMEOUT_MS = 30000` enforced via `AbortController`. Scores each candidate 0-1 against the user's active `topic_subscriptions`, returns `matched_topic_id` (or null), one-sentence reason. Defensive parsing: strips ```` ```json ```` fences, clamps relevance into [0, 1], drops verdicts with unknown `research_item_id`, nullifies unknown `matched_topic_id`.
+4. **Threshold + priority ranking.** `rankJudgedCandidates` discards verdicts with raw relevance below `JUDGE_RELEVANCE_THRESHOLD = 0.4`, applies `getPriorityMultiplier(topic_subscriptions.priority_weight)` from `src/lib/ai/rank-research.ts` (1=0.6, 2=0.8, 3=1.0, 4=1.2, 5=1.5) → `final_score = relevance × multiplier`. Sort desc.
+5. **Fallback.** On judge timeout, parse failure, or any SDK error, falls back to deterministic global `(relevance + originality)` order across the same recency-filtered pool. Records `judgeUsed: false` and `judgeFallbackReason` in the per-user log. Threshold is **not** applied in fallback mode (global scores aren't directly comparable to judge relevance).
+6. **Drafting.** Top `user_settings.drafts_per_day` (default 3) selected. `buildVoicePromptSlice(voiceProfile)` — shared 16-field helper used by both this path and `/api/drafts/generate-quick` — feeds `generateDraft`. Sets `draft.topic_subscription_id` and `draft.topic_label` from the judge's `matched_topic_id` (no longer keyword-overlap).
+7. **Per-user cron observability.** End of run writes a `cron_runs` row with `phase = 'generate'` and `result = { userId, draftsGenerated, skipped, reason?, candidatesConsidered, candidatesPassingThreshold, judgeUsed, judgeDurationMs, judgeFallbackReason }`. Updates `user_settings.last_cron_status` to `'success_with_drafts'` or `'success_no_drafts'` (NOT updated for skip cases) and `last_cron_at` to now.
+
+The legacy `matchTopicSubscriptionForResearchItem` function in `generate.ts` is kept exported for `/api/drafts/generate-quick`, which still uses keyword overlap to label its single Tavily-fetched item. The cron path no longer calls it.
+
+The inbox empty-state UI (`src/app/inbox/inbox-client.tsx`) reads `lastCronStatus` and `lastCronAt` via `GET /api/drafts` and shows a different copy when the last run finished within 24h with `'success_no_drafts'` ("Nothing in today's research closely matched your topics. We'll keep looking tomorrow. To generate a draft on a specific topic right now, use Quick Generate above.") — the Quick Generate input is on the same page.
+
+---
+
+## Operator Scripts
+
+Run via `npx tsx scripts/<name>.mts`. None are in the test suite; none are imported by app code. All load `.env.local` via dotenv at the top.
+
+| Script | Purpose |
+|---|---|
+| `scripts/run-cron-for-user.mts <userId>` | Invokes `runGeneratePipelineForUser` end-to-end against the live DB. Same code path as the Trigger.dev daily schedule. |
+| `scripts/probe-judge.mts <userId>` | Calls the Haiku judge in isolation against the user's recency-filtered candidate pool with a 60s timeout; prints per-candidate verdicts and the priority-adjusted ranking. Doesn't write any drafts. |
+| `scripts/grant-beta-access.mts <email> <days>` | Upserts `user_settings`, sets `beta_access_until = now() + days`. Service-role auth via `SUPABASE_SERVICE_ROLE_KEY`. |
+| `scripts/verify-beta-gate.mts` | Prints `getSubscriptionStatus` for every auth user; temporarily expires beta on `chittimooriadarsh@gmail.com`, runs the cron, asserts the no_access skip writes the right `cron_runs` row, then restores the original `beta_access_until`. |
+
+---
+
+## Tests
+
+Vitest 4. Config: `vitest.config.mts` (root). Setup: `tests/setup.ts` (sets stub env vars). Currently 32 tests across 4 files in `tests/`:
+
+| File | Coverage |
+|---|---|
+| `tests/voice-slice.test.ts` | Snapshot of `buildVoicePromptSlice` output — regression guard for the quick-generate refactor. |
+| `tests/judge-research.test.ts` | Happy path, fence stripping, relevance clamping, unknown research-item-id drops, unknown matched-topic-id nullify, all four fallback paths (SDK throw, non-JSON, missing array, abort timeout), empty-input short-circuit, threshold constant. |
+| `tests/rank-judged-candidates.test.ts` | Threshold cut-off (raw relevance, not adjusted), priority 5 vs 1 invariant at equal relevance, fallback path returns global score order, unknown topic id falls back to multiplier 1.0. |
+| `tests/rank-research.test.ts` | `PRIORITY_MULTIPLIERS` math + `getPriorityAdjustedScore` edge cases. |
+
+**No DB integration tests.** The project has no test container or sandbox-schema setup; stubbing Drizzle's chained query builder is fragile. The operator scripts above are the manual integration check.
 
 ---
 
@@ -268,10 +316,12 @@ Key values used everywhere:
 ## Known Issues and Workarounds
 
 - **`/api/auth/signout`** builds redirect with `new URL("/login", process.env.NEXT_PUBLIC_SUPABASE_URL!)` — host becomes Supabase project URL, not the app host. **Likely bug**; verify in production.
-- **Paywall vs automation:** `getSubscriptionStatus` gates **only** `approve`, `regenerate`, `generate-one`, and `projects/[id]/generate`. **Cron / Trigger `runGeneratePipelineForUser` does not call `getSubscriptionStatus` in pipeline code** — unpaid users may still receive automated drafts if cron runs for them.
-- **drizzle-kit / Supabase:** `AGENTS.md` does not mention drizzle-kit; repo contains `drizzle-kit` dependency and migrations. Treat schema workflow as team-defined.
-- **`AGENTS.md`:** Only notes Next.js 15 breaking changes vs training data — read `node_modules/next/dist/docs/` before Next-specific work.
+- **drizzle-kit / Supabase:** `AGENTS.md` does not mention drizzle-kit; repo contains `drizzle-kit` dependency and migrations. Treat schema workflow as team-defined. Schema-vs-snapshot drift exists from before commit 0006 (`subscriptions` table and several `draft_queue` columns were added without committed migrations); the 0007 and 0008 migrations were trimmed to their actual additions to avoid recreate-on-prod failures, and snapshots are aligned to current state. Pre-existing drift remains untouched — separate cleanup PR.
+- **`AGENTS.md`:** Only notes Next.js 15 breaking changes vs training data — instructs to read `node_modules/next/dist/docs/`, but that directory does not exist in this Next install (May 2026). Proceed conservatively on Next-specific work.
 - **`CLAUDE.md`:** Only references `@AGENTS.md`.
+- **Signup marketing copy vs flow:** `/signup` page text says "Start your 14-day free trial. No card required during setup." In practice the only path to a `'trialing'` `subscriptions` row is the `checkout.session.completed` webhook, which requires entering card details on Stripe's hosted checkout. Beta-access users bypass this entirely. Marketing/code gap, untouched in current PRs.
+- **Dead Stripe dependency:** `@stripe/stripe-js ^9.4.0` is in `package.json` but never imported under `src/`. Checkout/portal use server-redirect flows (`window.location.href = data.url`). Safe to remove in a cleanup PR.
+- **Beta + Stripe coexistence:** Users with both an active beta and a `'trialing'`/`'active'` Stripe row report `status: 'beta'` from `getSubscriptionStatus` until beta expires. Stripe still bills via webhook → `subscriptions` row updates independently; the gate function just prefers the more permissive beta verdict for `canGenerate`/`canPublish`.
 
 ---
 
@@ -279,16 +329,28 @@ Key values used everywhere:
 
 - **Price:** $10/month (Stripe Price id from `STRIPE_PRICE_ID`).
 - **Trial:** 14 days via `trial_period_days: 14` on Checkout `subscription_data`.
-- **Statuses stored:** `trialing`, `active`, `past_due`, `canceled`, `incomplete` (and unknown raw → treated as `none` in helper for display logic).
-- **`getSubscriptionStatus` (actual code):**
-  - `canGenerate` / `canPublish`: **true only** for `trialing` or `active`.
-  - `showPaymentBanner`: **true** only for `past_due`.
-  - No row → `status: "none"`, both caps false, no banner.
-- **Effect:** `past_due` users **cannot** approve, regenerate, or hit gated generate routes (402). They **can** still load inbox and see banner. **Not** the same as “full access + banner.”
-- **Webhook events handled:** `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`.
+- **Statuses returned by `getSubscriptionStatus`:** `'beta'`, `'trialing'`, `'active'`, `'past_due'`, `'canceled'`, `'incomplete'`, `'none'`.
+- **`getSubscriptionStatus` (actual code, beta-first):**
+  1. Reads `user_settings.beta_access_until`. If non-null and in the future → returns `{ status: 'beta', canGenerate: true, canPublish: true, showPaymentBanner: false, trialEndsAt: null, currentPeriodEnd: null, betaAccessUntil: <Date> }`. Stripe lookup is skipped.
+  2. Otherwise reads `subscriptions` row.
+     - `canGenerate` / `canPublish`: **true only** for `'trialing'` or `'active'`.
+     - `showPaymentBanner`: **true** only for `'past_due'`.
+     - No row → `status: 'none'`, both caps false, no banner.
+  - Returns `betaAccessUntil` on every code path (null if unset/expired).
+- **Effect:** `'past_due'` users **cannot** approve, regenerate, or hit gated generate routes (402). They **can** still load inbox and see banner. Beta users with an existing Stripe row report `'beta'` (more permissive); the Stripe row is left untouched.
+- **Webhook events handled:** `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`. Signature verification via `stripe.webhooks.constructEvent` with `STRIPE_WEBHOOK_SECRET`. `/api/billing/webhook` is in the middleware `publicPaths` allowlist (no auth gate).
 - **Success URL:** `${NEXT_PUBLIC_APP_URL}/inbox`
 - **Cancel URL:** `${NEXT_PUBLIC_APP_URL}/settings?billing=canceled`
 - **Customer portal:** `POST /api/billing/portal` → JSON `{ url }`; return URL `/settings`.
+
+### Beta Access Layer
+
+Additive layer on top of the Stripe gate. Schema: `user_settings.beta_access_until timestamptz` (nullable). Migration `0008_beta_access_until.sql`.
+
+- **Granting:** `npx tsx scripts/grant-beta-access.mts <email> <days>` — looks up the auth user via `SUPABASE_SERVICE_ROLE_KEY`, upserts `user_settings`, sets `beta_access_until = now() + days`.
+- **Current state (2026-05-03):** all 5 auth users granted 1 year of beta (expires 2027-05-03). The Stripe `subscriptions` rows for `kots.aakash@gmail.com` (`'incomplete'`) and `reddynitheesh005@gmail.com` (`'trialing'`) are unaffected; both report `status: 'beta'`.
+- **Cron-side enforcement:** `runGeneratePipelineForUser` calls `getSubscriptionStatus` at the top. If `!canGenerate`, writes a `cron_runs` row with `result.skipped: true, result.reason: 'no_access'` and returns without generating. (This closes the gap previously documented as "Paywall vs automation" in Known Issues.)
+- **What's not modified:** Stripe SDK calls, the `subscriptions` table, the webhook handler, the checkout/portal routes. The 5 existing `getSubscriptionStatus` callers (drafts/generate-quick, drafts/generate-one, drafts/[id]/regenerate, drafts/[id]/approve, projects/[id]/generate) get beta-awareness automatically.
 
 ---
 
@@ -327,17 +389,25 @@ From **`vercel.json` only:**
 - Draft generation (Claude), AI tell scan, voice scoring, regeneration, personalization, rejection reasons
 - LinkedIn OAuth and text post publish to `/rest/posts`
 - Stripe Checkout, webhook sync to `subscriptions`, Customer Portal
-- Subscription gating (402) on specific write/generate routes
+- Subscription gating (402) on specific write/generate routes — now beta-aware via the beta-first branch in `getSubscriptionStatus`
 - Trigger.dev tasks: daily research, per-user generate schedule, on-demand publish task
 - UI pages: inbox, settings, projects, history, archive, insights, onboarding
+- **Daily generation pipeline (Phase 1):** 72h recency filter, 30-candidate pool, Haiku judge step (`judgeResearchForUser`), 0.4 relevance threshold, priority-weighted ranking, deterministic fallback on judge failure, topic label set from judge `matched_topic_id` (no longer keyword overlap)
+- **Per-user cron observability:** `cron_runs` row written per user per run with judge stats; `user_settings.last_cron_status` / `last_cron_at` columns power the inbox empty-state messaging
+- **Cron-side access enforcement:** `runGeneratePipelineForUser` now calls `getSubscriptionStatus` and skips with `reason: 'no_access'` if `!canGenerate`
+- **Beta access layer:** `user_settings.beta_access_until` column, `'beta'` status returned ahead of Stripe, `scripts/grant-beta-access.mts` admin tool
+- **Vitest test infra:** 32 unit tests covering voice slice, judge fallback paths, ranking math, threshold logic
+- **Operator scripts:** `scripts/{run-cron-for-user, probe-judge, grant-beta-access, verify-beta-gate}.mts`
 
 ### Not built or incomplete in repo
 
 - LinkedIn image / rich media upload flow
-- **Paywall on automated generation** (cron/Trigger pipeline) — not enforced in `src/lib/pipeline/generate.ts`
-- Vercel cron entries for generate/publish (only research declared)
-- RLS policies (not in repo)
+- Vercel cron entries for generate/publish (only research declared); per-user generation runs through Trigger.dev schedules
+- RLS policies (not defined in repo; `subscriptions` table verified to have a `user_owns_subscription` policy in Supabase, others unverified)
 - `/api/auth/login` server password login (explicitly disabled)
+- DB integration tests (no test container or sandbox schema set up)
+- UI surface for beta status (the existing `showPaymentBanner` returns false for beta users so the inbox banner naturally won't show; deliberately deferred)
+- Project-junction priority weighting in the daily cron (Phase 2; junction `series_topic_subscriptions.priority_weight` is read only by `/api/projects/[id]/generate` today)
 
 ---
 
