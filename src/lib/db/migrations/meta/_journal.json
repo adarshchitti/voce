@@ -64,6 +64,13 @@
       "when": 1777837376381,
       "tag": "0008_beta_access_until",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777839536545,
+      "tag": "0009_phase2_research_observability",
+      "breakpoints": true
     }
   ]
 }

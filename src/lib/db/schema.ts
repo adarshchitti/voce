@@ -38,6 +38,10 @@ export const topicSubscriptions = pgTable("topic_subscriptions", {
   sourceUrls: text("source_urls").array().default(sql`'{}'`),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Phase 2 observability: per-topic Tavily fetch outcome
+  // status: null (never fetched) | 'success' | 'tavily_error' | 'no_results'
+  lastResearchFetchAt: timestamp("last_research_fetch_at", { withTimezone: true }),
+  lastResearchFetchStatus: text("last_research_fetch_status"),
 });
 
 export const contentSeries = pgTable("content_series", {
@@ -307,6 +311,9 @@ export const userSettings = pgTable("user_settings", {
   // When non-null and in the future, the user has full canGenerate / canPublish
   // access regardless of subscription state. Expires automatically.
   betaAccessUntil: timestamp("beta_access_until", { withTimezone: true }),
+  // Phase 2 feature flag: 'global_pool' (Phase 1 behaviour) | 'per_user_tavily'
+  // Validated in code; no DB-level CHECK constraint per Phase 2 plan.
+  dailyResearchMode: text("daily_research_mode").notNull().default("global_pool"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
