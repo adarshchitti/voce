@@ -3,6 +3,7 @@ import type { StructureTemplate } from "@/lib/ai/structure-templates";
 import { sanitiseGenerationPromptInputs } from "@/lib/ai/prompts";
 import {
   buildBlocklistPromptSection,
+  buildGroundingPromptSection,
   buildUserOverridesPromptSection,
   type RuleContext,
 } from "@/lib/ai/quality-rules";
@@ -135,6 +136,7 @@ export function buildGenerationPrompts(input: GenerateDraftInput): {
     tellFlagEmDash: input.tellFlagEmDash ?? null,
     emojiFrequency: input.emojiFrequency ?? null,
   };
+  const groundingBlock = buildGroundingPromptSection();
   const userOverridesBlock = buildUserOverridesPromptSection(ruleContext);
   const aiTellBlocklist = buildBlocklistPromptSection(ruleContext);
 
@@ -270,13 +272,15 @@ ${input.relevantMemories
 ${input.rulesManifest}\n`
     : "\nLEARNED STYLE RULES (extracted from this user's editing history): none yet.\n";
 
+  // Factual-accuracy rules previously lived here as two short bullets. Those
+  // bullets are now superseded by the standalone groundingBlock at the top of
+  // the prompt — single source of truth for the SOURCE GROUNDING contract.
   const strictRules = `STRICT RULES:
-- Never exceed 3000 characters total (LinkedIn's hard limit)
-- Every factual claim must come directly from the provided source article
-- Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}`;
+- Never exceed 3000 characters total (LinkedIn's hard limit)${rejectionText}${instructionSuffix}`;
 
   const systemPrompt = [
     expertFrame,
+    groundingBlock,
     userOverridesBlock,
     voiceSection,
     emojiRuleBlock,

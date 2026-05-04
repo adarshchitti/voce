@@ -48,9 +48,53 @@ export interface RuleContext {
 export const USER_BANNED_WORDS_RULE_ID = "user_banned_words";
 export const USER_NOTES_RULE_ID = "user_notes";
 
+const SOURCE_GROUNDING_INSTRUCTION = `SOURCE GROUNDING (HARD RULE, NO EXCEPTIONS):
+
+Every specific factual claim in this draft must be directly supported by the source research above. This includes:
+
+- Numbers, percentages, statistics, counts, dollar figures
+- Dates, years, time durations, timelines
+- Quotes (exact words attributed to a person or organization)
+- Attributions (who said something, who built something, who funded something)
+- Named entities (specific people, companies, products, papers, organizations)
+- Causal claims (X caused Y, X led to Y)
+- First-person research claims (I read, I tracked, I built, I tested, I worked on)
+
+If the source does not contain a specific claim, you MUST NOT include that claim in the draft. It is better to write a vaguer post than to invent specifics. Better to hedge than to fabricate.
+
+When the source lacks a specific number where a post would normally include one, write around it: "a small fraction," "most teams," "in some cases," "a meaningful share." When the source lacks a specific date, write "recently," "earlier this year," "in the past few months." When the source lacks a specific named individual, write "the author," "the research team," "the company."
+
+Never invent first-person experience. The user has not read papers they did not read, has not built systems they did not build, has not held opinions they have not stated. Voice profile fields define what first-person claims are allowed; nothing else is.
+
+A draft that hedges is preferred to a draft that fabricates. This rule overrides any post style or pattern you might be inclined toward.`;
+
 // Static rules. Scan functions are added in Step 2; the prompt builder works
 // without them.
 export const STATIC_QUALITY_RULES: QualityRule[] = [
+  {
+    id: "lex_source_grounding",
+    category: "lexical",
+    description: "Source grounding (no fabricated facts or first-person claims)",
+    defaultThreshold: "never",
+    userOverridable: false,
+    action: "flag",
+    promptInstructionDefault: SOURCE_GROUNDING_INSTRUCTION,
+    // No scanFunction — companion rule fact_check_unsupported_claims runs an
+    // async Haiku verifier out-of-band.
+  },
+  {
+    id: "fact_check_unsupported_claims",
+    category: "structural",
+    description: "Possible unsupported claims found",
+    defaultThreshold: 0,
+    userOverridable: false,
+    action: "flag",
+    // Prompt-side is fully covered by lex_source_grounding above.
+    promptInstructionDefault: "",
+    // Verification is async and source-aware; runs via verifyFactualClaims
+    // (src/lib/ai/fact-check.ts) called from each generation site after the
+    // synchronous scan.
+  },
   {
     id: "lex_word_choices",
     category: "lexical",
@@ -373,12 +417,26 @@ export function pickPromptInstruction(rule: QualityRule, ctx: RuleContext): stri
   return rule.promptInstructionDefault;
 }
 
+// Returns the standalone SOURCE GROUNDING block. Sits at the top of the
+// system prompt (immediately after the expert frame) so the grounding rule
+// anchors the model before any other rules. Foundational; not user-overridable.
+export function buildGroundingPromptSection(): string {
+  const rule = STATIC_QUALITY_RULES.find((r) => r.id === "lex_source_grounding");
+  return rule?.promptInstructionDefault ?? "";
+}
+
 // Returns the "WORD CHOICES + STRUCTURAL RULES" block (replaces
 // AI_TELL_BLOCKLIST_PROMPT). User-derived rules are excluded — those go
-// in the userOverrides block.
+// in the userOverrides block. lex_source_grounding is excluded because it
+// renders standalone via buildGroundingPromptSection. fact_check_unsupported_claims
+// is excluded because it has no prompt-side text (scan-only rule).
 export function buildBlocklistPromptSection(ctx: RuleContext): string {
   const rules = getActiveQualityRules(ctx).filter(
-    (r) => r.id !== USER_BANNED_WORDS_RULE_ID && r.id !== USER_NOTES_RULE_ID,
+    (r) =>
+      r.id !== USER_BANNED_WORDS_RULE_ID &&
+      r.id !== USER_NOTES_RULE_ID &&
+      r.id !== "lex_source_grounding" &&
+      r.id !== "fact_check_unsupported_claims",
   );
 
   const wordChoiceRule = rules.find((r) => r.id === "lex_word_choices");
