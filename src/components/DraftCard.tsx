@@ -131,6 +131,35 @@ function parseAiTellFlags(raw: string | null): ParsedAiTellFlags {
   }
 }
 
+// Renders the fact-check flag's details as a multi-line claim list. The
+// verifier produces a pipe-separated string ("Claim: 'X'. Source says: Y. |
+// Claim: '...'. Source says: ..."); we split it back out so each claim sits
+// on its own line under an explanatory line. Highest-signal flag in the
+// banner — the user is likely to act on it.
+function FactCheckFlagBody({ details }: { details?: string }) {
+  const claims = (details ?? "")
+    .split(" | ")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return (
+    <div>
+      <p className="font-medium">Possible unsupported claims found</p>
+      <p className="mt-0.5 text-[#A16207]">
+        These specific claims may not be supported by the source. Review and edit if needed.
+      </p>
+      {claims.length > 0 ? (
+        <ul className="mt-1 space-y-0.5 pl-3">
+          {claims.map((claim, i) => (
+            <li key={i} className="list-[circle]">
+              {claim}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRemoved: () => void }) {
   const [currentDraft, setCurrentDraft] = useState(draft);
   const [isEditing, setIsEditing] = useState(false);
@@ -350,7 +379,9 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
               <ul className="space-y-1 pl-4">
                 {warningFlags.map((f, i) => (
                   <li key={`${f.ruleId}-${i}`} className="list-disc">
-                    {f.details ? (
+                    {f.ruleId === "fact_check_unsupported_claims" ? (
+                      <FactCheckFlagBody details={f.details} />
+                    ) : f.details ? (
                       <>
                         <span className="font-medium">{f.message}:</span> {f.details}
                       </>
