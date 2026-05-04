@@ -53,4 +53,14 @@ describe("sanitiseBannedWords (relaxed)", () => {
     const many = Array.from({ length: 80 }, (_, i) => `word${i}`);
     expect(sanitiseBannedWords(many).length).toBe(50);
   });
+
+  // Regression net for the banned-words chip UI: the API endpoint
+  // /api/voice/overrides delegates entirely to sanitiseBannedWords for
+  // banned-word filtering. If anyone narrows the sanitiser later, this
+  // test fails before the chip UI silently loses user data.
+  it("end-to-end contract: em dash, smart quotes, accents, emoji all survive together", () => {
+    const input = ["—", "“hello”", "café", "🚀", "leverage"];
+    const out = sanitiseBannedWords(input);
+    expect(out).toEqual(input);
+  });
 });

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Download, Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
+import { addBannedWord, removeBannedWord } from "@/lib/banned-words-helpers";
 import { cn } from "@/lib/utils";
 
 interface LinkedInTokenView {
@@ -534,7 +535,8 @@ export default function SettingsClient({ subscription }: { subscription: Setting
   const [emojiNeverOverride, setEmojiNeverOverride] = useState(false);
   const [newSignaturePhrase, setNewSignaturePhrase] = useState("");
   const [newNeverPattern, setNewNeverPattern] = useState("");
-  const [userBannedWordsText, setUserBannedWordsText] = useState("");
+  const [userBannedWords, setUserBannedWords] = useState<string[]>([]);
+  const [bannedWordDraft, setBannedWordDraft] = useState("");
   const [userNotes, setUserNotes] = useState("");
   const [linkedinToken, setLinkedinToken] = useState<LinkedInTokenView | null>(null);
   const [schedulingSettings, setSchedulingSettings] = useState<SchedulingSettings>({
@@ -604,7 +606,7 @@ export default function SettingsClient({ subscription }: { subscription: Setting
     const extracted = vp.extractedPatterns as { emojiFrequency?: string } | null | undefined;
     setEmojiFrequency(extracted?.emojiFrequency ?? null);
     setEmojiNeverOverride(Boolean(vp.emojiNeverOverride));
-    setUserBannedWordsText(((vp.userBannedWords as string[]) ?? []).join(", "));
+    setUserBannedWords((vp.userBannedWords as string[]) ?? []);
   }
 
   useEffect(() => {
@@ -845,11 +847,6 @@ export default function SettingsClient({ subscription }: { subscription: Setting
   }
 
   async function saveOverrides() {
-    const userBannedWords = userBannedWordsText
-      .split(",")
-      .map((word) => word.trim())
-      .filter(Boolean);
-
     const response = await fetch("/api/voice/overrides", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -859,6 +856,53 @@ export default function SettingsClient({ subscription }: { subscription: Setting
       }),
     });
     showToast(response.ok ? "Preferences saved" : "Failed to save", response.ok ? "success" : "error");
+  }
+
+  // Optimistic add/remove for the banned-words chip list. Updates state
+  // immediately so the chip appears/disappears on the next paint, fires the
+  // PATCH in the background, and reverts the state if the network call fails.
+  async function patchBannedWords(next: string[]): Promise<boolean> {
+    try {
+      const response = await fetch("/api/voice/overrides", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userBannedWords: next }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleAddBannedWord() {
+    const result = addBannedWord(userBannedWords, bannedWordDraft);
+    if (!result.ok) {
+      if (result.reason === "duplicate") showToast("Already in your list", "error");
+      else if (result.reason === "too_long") showToast("Word too long (50 char max)", "error");
+      else if (result.reason === "limit") showToast("Maximum 50 banned words", "error");
+      // empty → silent no-op
+      return;
+    }
+    const previous = userBannedWords;
+    setUserBannedWords(result.next);
+    setBannedWordDraft("");
+    const ok = await patchBannedWords(result.next);
+    if (!ok) {
+      setUserBannedWords(previous);
+      showToast(`Couldn't add "${result.added}"`, "error");
+    }
+  }
+
+  async function handleRemoveBannedWord(index: number) {
+    const previous = userBannedWords;
+    const next = removeBannedWord(userBannedWords, index);
+    if (next === previous) return;
+    setUserBannedWords(next);
+    const ok = await patchBannedWords(next);
+    if (!ok) {
+      setUserBannedWords(previous);
+      showToast("Couldn't remove word", "error");
+    }
   }
 
   async function patchVoiceOverrides(payload: {
@@ -1125,10 +1169,37 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[13px] font-medium text-[#374151]">Banned words</label>
-                  <p className="text-[12px] text-[#9CA3AF]">Comma-separated words/phrases to avoid</p>
+                  <p className="text-[12px] text-[#9CA3AF]">
+                    Banned words match exact form only. Add variants separately (e.g., &quot;leverage&quot;,
+                    &quot;leveraging&quot;, &quot;leveraged&quot;).
+                  </p>
+                  {userBannedWords.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {userBannedWords.map((word, i) => (
+                        <button
+                          key={`banned-${i}-${word.slice(0, 12)}`}
+                          type="button"
+                          title="Remove"
+                          onClick={() => handleRemoveBannedWord(i)}
+                          className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEE2E2]"
+                        >
+                          {word} ×
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   <input
-                    value={userBannedWordsText}
-                    onChange={(e) => setUserBannedWordsText(e.target.value)}
+                    value={bannedWordDraft}
+                    onChange={(e) => setBannedWordDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddBannedWord();
+                      }
+                    }}
+                    placeholder="Add a word or phrase, then press Enter"
+                    autoComplete="off"
+                    maxLength={50}
                     className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
                 </div>
