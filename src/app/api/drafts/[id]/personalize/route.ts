@@ -4,6 +4,7 @@ import { draftMemories, draftQueue, rejectionReasons, researchItems, userSetting
 import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
+import type { RuleContext } from "@/lib/ai/quality-rules";
 import { buildAiTellFlagsJson, scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
@@ -118,16 +119,27 @@ Rules:
       rulesManifest: null,
     });
 
-    const [scanResult, voiceResult] = await Promise.all([
-      scanDraftForAITells(result.draftText, undefined, voiceProfile?.calibrated ? {
-        paragraphStyle: voiceProfile.paragraphStyle,
-        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
-        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
-      } : undefined),
+    const scanContext: RuleContext = {
+      userBannedWords: voiceProfile?.userBannedWords ?? null,
+      userNotes: voiceProfile?.userNotes ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
+      tellFlagEngagementBeg: settings?.tellFlagEngagementBeg ?? true,
+      tellFlagBannedWords: settings?.tellFlagBannedWords ?? true,
+      tellFlagNumberedLists: (settings?.tellFlagNumberedLists ?? "three_plus") as
+        | "always"
+        | "three_plus"
+        | "never",
+      tellFlagEveryLine: settings?.tellFlagEveryLine ?? true,
+      emojiFrequency:
+        (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+    };
+    const scanResult = scanDraftForAITells(result.draftText, scanContext, {
+      recentMemories: relevantMemories,
+    });
+    const voiceResult =
       voiceProfile?.calibrated && voiceProfile.extractedPatterns
-        ? scoreVoiceDetailed({ draftText: result.draftText, voiceProfile })
-        : Promise.resolve(null),
-    ]);
+        ? await scoreVoiceDetailed({ draftText: scanResult.draftText, voiceProfile })
+        : null;
 
     const voiceScore = voiceResult?.score ?? null;
     const voiceFlags = voiceResult?.flags ?? [];
@@ -135,7 +147,7 @@ Rules:
     await db
       .update(draftQueue)
       .set({
-        draftText: result.draftText,
+        draftText: scanResult.draftText,
         hook: result.hook,
         structureTemplateId: structureTemplate.id,
         voiceScore,

@@ -55,8 +55,9 @@ export const STATIC_QUALITY_RULES: QualityRule[] = [
     id: "lex_word_choices",
     category: "lexical",
     description: "Prefer simpler synonyms over generic AI vocabulary",
-    defaultThreshold: "never",
-    userOverridable: false,
+    defaultThreshold: 1,
+    userSettingsFlag: "tellFlagBannedWords",
+    userOverridable: true,
     action: "flag",
     promptInstructionDefault: `WORD CHOICES — always prefer the simpler word:
 - "use" not "leverage", "utilize", or "employ"
@@ -82,6 +83,16 @@ export const STATIC_QUALITY_RULES: QualityRule[] = [
     userOverridable: false,
     action: "regenerate",
     promptInstructionDefault: "Do NOT end with any engagement request or question directed at the reader",
+  },
+  {
+    id: "phrase_ai_tells",
+    category: "phrase",
+    description: "Generic AI-tell phrases (truth bomb, the magic happens when, etc.)",
+    defaultThreshold: 0,
+    userOverridable: false,
+    action: "flag",
+    promptInstructionDefault:
+      "Do NOT use phrases like 'truth bomb', 'the magic happens when', 'in conclusion', 'it's important to note', or 'most people miss'",
   },
   {
     id: "struct_no_accordion",
@@ -276,6 +287,17 @@ export const STATIC_QUALITY_RULES: QualityRule[] = [
     action: "flag",
     promptInstructionDefault:
       "Use contractions in first-person sentences (I'm, I've, I'd, don't, can't, it's)",
+  },
+  {
+    id: "struct_numbered_list",
+    category: "structural",
+    description: "Numbered list (gated by tell_flag_numbered_lists)",
+    defaultThreshold: 3,
+    userSettingsFlag: "tellFlagNumberedLists",
+    userOverridable: true,
+    action: "flag",
+    promptInstructionDefault:
+      "Avoid numbered lists with more than 3 items unless they genuinely serve the post",
   },
 ];
 

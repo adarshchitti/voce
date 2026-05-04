@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
+import type { RuleContext } from "@/lib/ai/quality-rules";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
@@ -436,16 +437,6 @@ async function runPerUserTavilyFlowForUser(input: {
   const selected = scored.slice(0, needed);
 
   // 6. Generate drafts. Voice handling identical to the legacy flow.
-  const sensitivitySettings = {
-    tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
-      | "always"
-      | "three_plus"
-      | "never",
-    tellFlagEmDash: settings.tellFlagEmDash ?? true,
-    tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
-    tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
-    tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
-  };
   const voiceProfile = await db.query.voiceProfiles.findFirst({ where: eq(voiceProfiles.userId, userId) });
   const recentRejections = await db.query.rejectionReasons.findMany({
     where: eq(rejectionReasons.userId, userId),
@@ -454,13 +445,20 @@ async function runPerUserTavilyFlowForUser(input: {
   });
   const structureTemplate = await selectStructureTemplate(userId);
   const voiceSlice = buildVoicePromptSlice(voiceProfile, { tellFlagEmDash: settings.tellFlagEmDash ?? true });
-  const scanCalibration = voiceProfile?.calibrated
-    ? {
-        paragraphStyle: voiceProfile.paragraphStyle,
-        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
-        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
-      }
-    : undefined;
+  const scanContext: RuleContext = {
+    userBannedWords: voiceProfile?.userBannedWords ?? null,
+    userNotes: voiceProfile?.userNotes ?? null,
+    tellFlagEmDash: settings.tellFlagEmDash ?? true,
+    tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
+    tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
+    tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
+      | "always"
+      | "three_plus"
+      | "never",
+    tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
+    emojiFrequency:
+      (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+  };
   const topicLabels = topics.map((t) => t.topicLabel);
   const rawDescription = voiceProfile?.rawDescription ?? topicLabels.join(", ");
 
@@ -497,7 +495,7 @@ async function runPerUserTavilyFlowForUser(input: {
     };
 
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings, scanCalibration);
+    let scanResult = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -506,16 +504,18 @@ async function runPerUserTavilyFlowForUser(input: {
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings, scanCalibration);
+        const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
+          recentMemories: relevantMemories,
+        });
         Object.assign(generated, regenerated);
-        Object.assign(scanResult, rescan);
+        scanResult = rescan;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }
     }
 
     const voiceScore = voiceProfile?.calibrated
-      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
+      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: scanResult.draftText })
       : null;
     const isRecentNews =
       ranking.sourceType === "tavily_news" ||
@@ -526,7 +526,7 @@ async function runPerUserTavilyFlowForUser(input: {
       researchItemId: ranking.researchItemId,
       topicSubscriptionId: ranking.sourceTopicId,
       topicLabel: ranking.sourceTopicLabel,
-      draftText: generated.draftText,
+      draftText: scanResult.draftText,
       hook: generated.hook,
       format: generated.format,
       hashtags: generated.hashtags ?? [],
@@ -582,17 +582,6 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     await persistUserCronResult(skipped);
     return skipped;
   }
-
-  const sensitivitySettings = {
-    tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
-      | "always"
-      | "three_plus"
-      | "never",
-    tellFlagEmDash: settings.tellFlagEmDash ?? true,
-    tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
-    tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
-    tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
-  };
 
   const [pendingCount] = await db
     .select({ value: sql<number>`count(*)` })
@@ -706,13 +695,20 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
   });
   const structureTemplate = await selectStructureTemplate(userId);
   const voiceSlice = buildVoicePromptSlice(voiceProfile, { tellFlagEmDash: settings.tellFlagEmDash ?? true });
-  const scanCalibration = voiceProfile?.calibrated
-    ? {
-        paragraphStyle: voiceProfile.paragraphStyle,
-        listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
-        usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
-      }
-    : undefined;
+  const scanContext: RuleContext = {
+    userBannedWords: voiceProfile?.userBannedWords ?? null,
+    userNotes: voiceProfile?.userNotes ?? null,
+    tellFlagEmDash: settings.tellFlagEmDash ?? true,
+    tellFlagEngagementBeg: settings.tellFlagEngagementBeg ?? true,
+    tellFlagBannedWords: settings.tellFlagBannedWords ?? true,
+    tellFlagNumberedLists: (settings.tellFlagNumberedLists ?? "three_plus") as
+      | "always"
+      | "three_plus"
+      | "never",
+    tellFlagEveryLine: settings.tellFlagEveryLine ?? true,
+    emojiFrequency:
+      (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+  };
   const rawDescription = voiceProfile?.rawDescription ?? topics.join(", ");
 
   let draftsGenerated = 0;
@@ -749,7 +745,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     };
 
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText, sensitivitySettings, scanCalibration);
+    let scanResult = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -758,16 +754,18 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText, sensitivitySettings, scanCalibration);
+        const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
+          recentMemories: relevantMemories,
+        });
         Object.assign(generated, regenerated);
-        Object.assign(scanResult, rescan);
+        scanResult = rescan;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }
     }
 
     const voiceScore = voiceProfile?.calibrated
-      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
+      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: scanResult.draftText })
       : null;
     const isRecentNews =
       item.sourceType === "tavily_news" ||
@@ -782,7 +780,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
         topicSubscriptionId: matchedSub.id,
         topicLabel: matchedSub.topicLabel,
       }),
-      draftText: generated.draftText,
+      draftText: scanResult.draftText,
       hook: generated.hook,
       format: generated.format,
       hashtags: generated.hashtags ?? [],

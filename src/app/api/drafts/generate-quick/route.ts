@@ -14,6 +14,7 @@ import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
+import type { RuleContext } from "@/lib/ai/quality-rules";
 import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { fetchTavily } from "@/lib/ai/tavily";
@@ -158,16 +159,25 @@ export async function POST(req: Request) {
       rulesManifest: null,
     };
 
-    const scanCalibration = voiceProfile?.calibrated
-      ? {
-          paragraphStyle: voiceProfile.paragraphStyle,
-          listUsage: (voiceProfile.extractedPatterns as { listUsage?: string } | null)?.listUsage ?? null,
-          usesEmDash: Boolean((voiceProfile.extractedPatterns as { emDashUsage?: boolean } | null)?.emDashUsage),
-        }
-      : undefined;
+    const scanContext: RuleContext = {
+      userBannedWords: voiceProfile?.userBannedWords ?? null,
+      userNotes: voiceProfile?.userNotes ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
+      tellFlagEngagementBeg: settings?.tellFlagEngagementBeg ?? true,
+      tellFlagBannedWords: settings?.tellFlagBannedWords ?? true,
+      tellFlagNumberedLists: (settings?.tellFlagNumberedLists ?? "three_plus") as
+        | "always"
+        | "three_plus"
+        | "never",
+      tellFlagEveryLine: settings?.tellFlagEveryLine ?? true,
+      emojiFrequency:
+        (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+    };
 
     const generated = await generateDraft(draftParams);
-    let scanResult = await scanDraftForAITells(generated.draftText, undefined, scanCalibration);
+    let scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+      recentMemories: relevantMemories,
+    });
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -176,16 +186,18 @@ export async function POST(req: Request) {
           instruction:
             "Do not end with any question or engagement request directed at the reader. End on your observation or takeaway.",
         });
-        const rescan = await scanDraftForAITells(regenerated.draftText, undefined, scanCalibration);
+        const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
+          recentMemories: relevantMemories,
+        });
         Object.assign(generated, regenerated);
-        Object.assign(scanResult, rescan);
+        scanResult = rescan;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }
     }
 
     const voiceScore = voiceProfile?.calibrated
-      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: generated.draftText })
+      ? await scoreVoice({ extractedPatterns: voiceProfile.extractedPatterns, draftText: scanResult.draftText })
       : null;
 
     const topicMatch = matchTopicSubscriptionForResearchItem(subscriptions, {
@@ -204,7 +216,7 @@ export async function POST(req: Request) {
           topicSubscriptionId: topicMatch.topicSubscriptionId,
           topicLabel: topicMatch.topicLabel,
         }),
-        draftText: generated.draftText,
+        draftText: scanResult.draftText,
         hook: generated.hook,
         format: generated.format,
         hashtags: generated.hashtags ?? [],
