@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   draftMemories,
@@ -12,6 +12,8 @@ import {
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
+import type { RuleContext } from "@/lib/ai/quality-rules";
+import { buildAiTellFlagsJson, scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { sanitiseInstruction } from "@/lib/sanitise";
@@ -42,6 +44,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const structureTemplate = await selectStructureTemplate(userId);
     const topicCluster = researchItem.sourceType ?? "general";
+    // Exclude any draftMemory tied to the draft being regenerated so the
+    // template-repeat scan doesn't compare a regenerated draft against an
+    // older approved version of itself.
     const relevantMemories = await db
       .select({
         hookFirstLine: draftMemories.hookFirstLine,
@@ -54,6 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           eq(draftMemories.userId, userId),
           eq(draftMemories.approved, true),
           eq(draftMemories.topicCluster, topicCluster),
+          ne(draftMemories.draftId, id),
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
@@ -87,7 +93,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       relevantMemories,
       rulesManifest: null,
     });
-    const voiceResult = voiceProfile?.calibrated ? await scoreVoiceDetailed({ voiceProfile, draftText: generated.draftText }) : null;
+
+    const scanContext: RuleContext = {
+      userBannedWords: voiceProfile?.userBannedWords ?? null,
+      userNotes: voiceProfile?.userNotes ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
+      tellFlagEngagementBeg: settings?.tellFlagEngagementBeg ?? true,
+      tellFlagBannedWords: settings?.tellFlagBannedWords ?? true,
+      tellFlagNumberedLists: (settings?.tellFlagNumberedLists ?? "three_plus") as
+        | "always"
+        | "three_plus"
+        | "never",
+      tellFlagEveryLine: settings?.tellFlagEveryLine ?? true,
+      emojiFrequency:
+        (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+    };
+    const scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+      recentMemories: relevantMemories,
+    });
+
+    const voiceResult = voiceProfile?.calibrated
+      ? await scoreVoiceDetailed({ voiceProfile, draftText: scanResult.draftText })
+      : null;
     const voiceScore = voiceResult?.score ?? null;
     const nextSequence = (original.regenerationCount ?? 0) + 1;
     const sanitisedInstruction = body.instruction ? sanitiseInstruction(body.instruction) : null;
@@ -98,12 +125,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         researchItemId: original.researchItemId,
         topicSubscriptionId: original.topicSubscriptionId ?? undefined,
         topicLabel: original.topicLabel ?? undefined,
-        draftText: generated.draftText,
+        draftText: scanResult.draftText,
         hook: generated.hook,
         format: generated.format,
         sourceUrls: [researchItem.url],
         voiceScore,
-        aiTellFlags: voiceResult?.flags?.length ? JSON.stringify({ words: [], structure: [], voice: voiceResult.flags }) : null,
+        aiTellFlags: buildAiTellFlagsJson(scanResult, voiceResult?.flags),
         status: "pending",
         regenerationCount: nextSequence,
         staleAfter: original.staleAfter,
@@ -115,7 +142,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       draftId: id,
       instruction: sanitisedInstruction,
       draftTextBefore: originalDraftText,
-      draftTextAfter: generated.draftText,
+      draftTextAfter: scanResult.draftText,
       sequenceNumber: nextSequence,
     });
     await db.update(draftQueue).set({ regenerationCount: nextSequence }).where(eq(draftQueue.id, id));

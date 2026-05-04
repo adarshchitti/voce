@@ -18,6 +18,8 @@ import { getSubscriptionStatus } from "@/lib/subscription";
 import { fetchTavilyItems } from "@/lib/ai/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
+import type { RuleContext } from "@/lib/ai/quality-rules";
+import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { getMatchedPriorityWeight, getPriorityAdjustedScore } from "@/lib/ai/rank-research";
 
@@ -285,6 +287,24 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       rulesManifest: null,
     });
 
+    const scanContext: RuleContext = {
+      userBannedWords: voiceProfile?.userBannedWords ?? null,
+      userNotes: voiceProfile?.userNotes ?? null,
+      tellFlagEmDash: settings?.tellFlagEmDash ?? true,
+      tellFlagEngagementBeg: settings?.tellFlagEngagementBeg ?? true,
+      tellFlagBannedWords: settings?.tellFlagBannedWords ?? true,
+      tellFlagNumberedLists: (settings?.tellFlagNumberedLists ?? "three_plus") as
+        | "always"
+        | "three_plus"
+        | "never",
+      tellFlagEveryLine: settings?.tellFlagEveryLine ?? true,
+      emojiFrequency:
+        (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
+    };
+    const scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+      recentMemories: relevantMemories,
+    });
+
     const isRecentNews =
       topResearch.sourceType === "tavily_news" ||
       (!!topResearch.publishedAt && Date.now() - topResearch.publishedAt.getTime() <= 48 * 60 * 60 * 1000);
@@ -293,11 +313,12 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       .values({
         userId,
         researchItemId: topResearch.id,
-        draftText: generated.draftText,
+        draftText: scanResult.draftText,
         hook: generated.hook,
         format: generated.format,
         hashtags: generated.hashtags ?? [],
         sourceUrls: [topResearch.url],
+        aiTellFlags: serializeAiTellFlags(scanResult),
         status: "pending",
         seriesId: projectId,
         seriesPosition,
