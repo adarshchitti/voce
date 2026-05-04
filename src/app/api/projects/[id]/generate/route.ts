@@ -19,7 +19,7 @@ import { fetchTavilyItems } from "@/lib/ai/tavily";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { buildProjectContext } from "@/lib/ai/prompts";
 import type { RuleContext } from "@/lib/ai/quality-rules";
-import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
+import { runFactCheckOrSkip, scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { getMatchedPriorityWeight, getPriorityAdjustedScore } from "@/lib/ai/rank-research";
 
@@ -301,9 +301,15 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       emojiFrequency:
         (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
     };
-    const scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+    const initialScan = scanDraftForAITells(generated.draftText, scanContext, {
       recentMemories: relevantMemories,
     });
+    const factCheckResult = await runFactCheckOrSkip(
+      initialScan,
+      { title: topResearch.title, url: topResearch.url, content: topResearch.summary ?? "" },
+      "route.projects.generate",
+    );
+    const scanResult = factCheckResult.scanResult;
 
     const isRecentNews =
       topResearch.sourceType === "tavily_news" ||

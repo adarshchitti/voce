@@ -15,7 +15,7 @@ import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { matchTopicSubscriptionForResearchItem } from "@/lib/pipeline/generate";
 import type { RuleContext } from "@/lib/ai/quality-rules";
-import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
+import { runFactCheckOrSkip, scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import { scoreVoice } from "@/lib/ai/score-voice";
 
 export async function POST() {
@@ -128,10 +128,18 @@ export async function POST() {
         (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
     };
 
+    const sourceItem = {
+      title: candidate.title,
+      url: candidate.url,
+      content: candidate.summary ?? "",
+    };
+
     const generated = await generateDraft(draftParams);
-    let scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+    const initialScan = scanDraftForAITells(generated.draftText, scanContext, {
       recentMemories: relevantMemories,
     });
+    const initialFactCheck = await runFactCheckOrSkip(initialScan, sourceItem, "route.generate-one");
+    let scanResult = initialFactCheck.scanResult;
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -143,8 +151,9 @@ export async function POST() {
         const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
           recentMemories: relevantMemories,
         });
+        const rescanFactCheck = await runFactCheckOrSkip(rescan, sourceItem, "route.generate-one.rescan");
         Object.assign(generated, regenerated);
-        scanResult = rescan;
+        scanResult = rescanFactCheck.scanResult;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }

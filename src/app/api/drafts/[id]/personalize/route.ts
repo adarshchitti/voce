@@ -5,7 +5,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import type { RuleContext } from "@/lib/ai/quality-rules";
-import { buildAiTellFlagsJson, scanDraftForAITells } from "@/lib/ai/scan-draft";
+import { buildAiTellFlagsJson, runFactCheckOrSkip, scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
@@ -133,9 +133,21 @@ Rules:
       emojiFrequency:
         (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
     };
-    const scanResult = scanDraftForAITells(result.draftText, scanContext, {
+    const initialScan = scanDraftForAITells(result.draftText, scanContext, {
       recentMemories: relevantMemories,
     });
+    // researchItem is null when the original draft has no researchItemId
+    // (older drafts predating the research-item link). Skip the verifier
+    // rather than synthesizing a fake source — runFactCheckOrSkip handles
+    // the null case with a structured log.
+    const factCheckResult = await runFactCheckOrSkip(
+      initialScan,
+      researchItem
+        ? { title: researchItem.title, url: researchItem.url, content: researchItem.summary ?? "" }
+        : null,
+      "route.personalize",
+    );
+    const scanResult = factCheckResult.scanResult;
     const voiceResult =
       voiceProfile?.calibrated && voiceProfile.extractedPatterns
         ? await scoreVoiceDetailed({ draftText: scanResult.draftText, voiceProfile })

@@ -6,6 +6,11 @@ import {
   type ScanOptions,
   runQualityScan,
 } from "@/lib/ai/quality-scan";
+import {
+  verifyFactualClaims,
+  type FactCheckOutcome,
+  type FactCheckSourceItem,
+} from "@/lib/ai/fact-check";
 
 // Public surface for the post-generation scan. Now a thin sync wrapper
 // around runQualityScan; the previous Haiku LLM scan and SensitivitySettings
@@ -83,6 +88,61 @@ export function serializeAiTellFlags(scanResult: ScanResult): string | null {
     flags: flagsToSerialized(scanResult.flags),
   };
   return JSON.stringify(payload);
+}
+
+// Async fact-check pass. Runs after the synchronous quality scan and, when
+// a source article is available, calls Haiku to verify specific claims in the
+// draft against the source. Returns a new ScanResult with the fact-check flag
+// merged into its flags array (when claims are unsupported) plus a
+// FactCheckOutcome describing what happened — telemetry the daily cron paths
+// thread back into GenerateUserResult.
+//
+// Architectural note: we keep this out of runQualityScan / SCAN_IMPLEMENTATIONS
+// because those are synchronous and source-unaware. Adding async + a new
+// per-rule input would force a refactor of every existing scan implementation
+// and the prompt-builder ScanFn type. Phase 1 keeps the sync scan untouched
+// and runs the verifier as a parallel async path; if Phase 2 adds more
+// source-aware async checks, we'll consider unifying the signatures.
+//
+// Fail-open: a null sourceItem (or a sourceItem with no content) returns the
+// original ScanResult and a "skipped" outcome. Verifier errors are logged
+// inside verifyFactualClaims and bubble up as an outcome with flag=null.
+export async function applyFactCheck(
+  scanResult: ScanResult,
+  sourceItem: FactCheckSourceItem | null,
+): Promise<{ scanResult: ScanResult; outcome: FactCheckOutcome }> {
+  const outcome = await verifyFactualClaims(scanResult.draftText, sourceItem);
+  if (!outcome.flag) return { scanResult, outcome };
+  const merged: ScanResult = {
+    ...scanResult,
+    flags: [...scanResult.flags, outcome.flag],
+    clean: false,
+  };
+  return { scanResult: merged, outcome };
+}
+
+// Convenience helper for call sites that have a partial source descriptor and
+// want to either run the verifier or skip with a structured "no source" log.
+// Returns the (possibly-merged) ScanResult plus the outcome. The caller is
+// responsible for deciding what to do with the outcome (typically: aggregate
+// into GenerateUserResult for cron telemetry, or discard for ad-hoc routes).
+export async function runFactCheckOrSkip(
+  scanResult: ScanResult,
+  sourceItem: { title?: string | null; url?: string | null; content?: string | null } | null,
+  contextLabel: string,
+): Promise<{ scanResult: ScanResult; outcome: FactCheckOutcome }> {
+  const hasContent = !!sourceItem?.content?.trim();
+  const hasTitle = !!sourceItem?.title?.trim();
+  const hasUrl = !!sourceItem?.url?.trim();
+  if (!hasContent || !hasTitle || !hasUrl) {
+    console.info(`[fact-check] verifier skipped (${contextLabel}): no source available`);
+    return applyFactCheck(scanResult, null);
+  }
+  return applyFactCheck(scanResult, {
+    title: sourceItem!.title!.trim(),
+    url: sourceItem!.url!.trim(),
+    content: sourceItem!.content!.trim(),
+  });
 }
 
 // Used by personalize / regenerate to merge voice-calibration flags alongside

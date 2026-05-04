@@ -14,7 +14,8 @@ import {
 import { generateDraft } from "@/lib/ai/generate-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import type { RuleContext } from "@/lib/ai/quality-rules";
-import { scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
+import { runFactCheckOrSkip, scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
+import type { FactCheckOutcome } from "@/lib/ai/fact-check";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
 import { getSubscriptionStatus } from "@/lib/subscription";
@@ -131,6 +132,16 @@ export type GenerateUserResult = {
     projectMultiplier: number;
     finalScore: number;
   }>;
+  // Aggregated fact-check telemetry across all drafts produced in this run.
+  // attempted = number of verifier calls made; succeeded = number that
+  // returned a parseable response; unsupportedClaimCount = total flagged
+  // claims across all drafts; durationMs = sum of verifier wall time.
+  factCheck?: {
+    attempted: number;
+    succeeded: number;
+    unsupportedClaimCount: number;
+    durationMs: number;
+  };
 };
 
 export type GenerateCronResult = {
@@ -157,6 +168,27 @@ export async function archiveStalePendingDrafts() {
     .update(draftQueue)
     .set({ status: "archived" })
     .where(and(eq(draftQueue.status, "pending"), lte(draftQueue.staleAfter, new Date())));
+}
+
+// Aggregator for per-draft fact-check outcomes across a single cron run.
+// Mirrors the GenerateUserResult.factCheck shape so we can spread it directly
+// into the result object at the end of the loop.
+function newFactCheckAccumulator() {
+  let attempted = 0;
+  let succeeded = 0;
+  let unsupportedClaimCount = 0;
+  let durationMs = 0;
+  return {
+    record(outcome: FactCheckOutcome) {
+      if (outcome.attempted) attempted += 1;
+      if (outcome.succeeded) succeeded += 1;
+      unsupportedClaimCount += outcome.unsupportedClaimCount;
+      durationMs += outcome.durationMs;
+    },
+    snapshot() {
+      return { attempted, succeeded, unsupportedClaimCount, durationMs };
+    },
+  };
 }
 
 function emptyResult(userId: string, reason: string): GenerateUserResult {
@@ -463,6 +495,7 @@ async function runPerUserTavilyFlowForUser(input: {
   const rawDescription = voiceProfile?.rawDescription ?? topicLabels.join(", ");
 
   let draftsGenerated = 0;
+  const factCheckAcc = newFactCheckAccumulator();
   for (const ranking of selected) {
     const topicCluster = ranking.sourceType ?? "general";
     const relevantMemories = await db
@@ -494,8 +527,17 @@ async function runPerUserTavilyFlowForUser(input: {
       rulesManifest: null,
     };
 
+    const sourceItem = {
+      title: ranking.title,
+      url: ranking.url,
+      content: ranking.summary ?? "",
+    };
+
     const generated = await generateDraft(draftParams);
-    let scanResult = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
+    const initialScan = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
+    const initialFactCheck = await runFactCheckOrSkip(initialScan, sourceItem, "pipeline.per_user_tavily");
+    factCheckAcc.record(initialFactCheck.outcome);
+    let scanResult = initialFactCheck.scanResult;
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -507,8 +549,10 @@ async function runPerUserTavilyFlowForUser(input: {
         const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
           recentMemories: relevantMemories,
         });
+        const rescanFactCheck = await runFactCheckOrSkip(rescan, sourceItem, "pipeline.per_user_tavily.rescan");
+        factCheckAcc.record(rescanFactCheck.outcome);
         Object.assign(generated, regenerated);
-        scanResult = rescan;
+        scanResult = rescanFactCheck.scanResult;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }
@@ -563,6 +607,7 @@ async function runPerUserTavilyFlowForUser(input: {
       projectMultiplier: s.projectMultiplier,
       finalScore: s.finalScore,
     })),
+    factCheck: factCheckAcc.snapshot(),
   };
   await persistUserCronResult(result);
   return result;
@@ -712,6 +757,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
   const rawDescription = voiceProfile?.rawDescription ?? topics.join(", ");
 
   let draftsGenerated = 0;
+  const factCheckAcc = newFactCheckAccumulator();
   for (const ranking of selected) {
     const item = ranking.item;
     const topicCluster = item.sourceType ?? "general";
@@ -744,8 +790,17 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
       rulesManifest: null,
     };
 
+    const sourceItem = {
+      title: item.title,
+      url: item.url,
+      content: item.summary ?? "",
+    };
+
     const generated = await generateDraft(draftParams);
-    let scanResult = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
+    const initialScan = scanDraftForAITells(generated.draftText, scanContext, { recentMemories: relevantMemories });
+    const initialFactCheck = await runFactCheckOrSkip(initialScan, sourceItem, "pipeline.global_pool");
+    factCheckAcc.record(initialFactCheck.outcome);
+    let scanResult = initialFactCheck.scanResult;
 
     if (scanResult.hasEngagementBeg) {
       try {
@@ -757,8 +812,10 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
         const rescan = scanDraftForAITells(regenerated.draftText, scanContext, {
           recentMemories: relevantMemories,
         });
+        const rescanFactCheck = await runFactCheckOrSkip(rescan, sourceItem, "pipeline.global_pool.rescan");
+        factCheckAcc.record(rescanFactCheck.outcome);
         Object.assign(generated, regenerated);
-        scanResult = rescan;
+        scanResult = rescanFactCheck.scanResult;
       } catch {
         console.error("Engagement beg regeneration failed — proceeding with original");
       }
@@ -795,6 +852,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
   }
 
   result.draftsGenerated = draftsGenerated;
+  result.factCheck = factCheckAcc.snapshot();
   await persistUserCronResult(result);
   return result;
 }

@@ -13,7 +13,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { getSubscriptionStatus } from "@/lib/subscription";
 import { generateDraft } from "@/lib/ai/generate-draft";
 import type { RuleContext } from "@/lib/ai/quality-rules";
-import { buildAiTellFlagsJson, scanDraftForAITells } from "@/lib/ai/scan-draft";
+import { buildAiTellFlagsJson, runFactCheckOrSkip, scanDraftForAITells } from "@/lib/ai/scan-draft";
 import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { sanitiseInstruction } from "@/lib/sanitise";
@@ -108,9 +108,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       emojiFrequency:
         (voiceProfile?.extractedPatterns as { emojiFrequency?: string } | null)?.emojiFrequency ?? null,
     };
-    const scanResult = scanDraftForAITells(generated.draftText, scanContext, {
+    const initialScan = scanDraftForAITells(generated.draftText, scanContext, {
       recentMemories: relevantMemories,
     });
+    const factCheckResult = await runFactCheckOrSkip(
+      initialScan,
+      { title: researchItem.title, url: researchItem.url, content: researchItem.summary ?? "" },
+      "route.regenerate",
+    );
+    const scanResult = factCheckResult.scanResult;
 
     const voiceResult = voiceProfile?.calibrated
       ? await scoreVoiceDetailed({ voiceProfile, draftText: scanResult.draftText })
