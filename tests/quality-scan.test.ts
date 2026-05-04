@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SCAN_IMPLEMENTATIONS, runQualityScan } from "@/lib/ai/quality-scan";
+import {
+  SCAN_IMPLEMENTATIONS,
+  runQualityScan,
+  stripEngagementBegParagraph,
+} from "@/lib/ai/quality-scan";
 import type { RuleContext } from "@/lib/ai/quality-rules";
 
 const ctx = (overrides: Partial<RuleContext> = {}): RuleContext => ({
@@ -198,6 +202,63 @@ describe("SCAN_IMPLEMENTATIONS", () => {
   });
 });
 
+describe("stripEngagementBegParagraph", () => {
+  it("returns unchanged when no beg phrase is present", () => {
+    const text = "Body of the post.\n\nA second line.";
+    const result = stripEngagementBegParagraph(text);
+    expect(result.stripped).toBe(false);
+    expect(result.text).toBe(text);
+    expect(result.phrase).toBeNull();
+  });
+
+  it("strips a tail paragraph containing 'what do you think'", () => {
+    const text = `First paragraph.
+
+Second paragraph.
+
+What do you think?`;
+    const result = stripEngagementBegParagraph(text);
+    expect(result.stripped).toBe(true);
+    expect(result.phrase?.toLowerCase()).toContain("what do you think");
+    expect(result.text).not.toContain("What do you think");
+    expect(result.text).toContain("First paragraph");
+    expect(result.text).toContain("Second paragraph");
+  });
+
+  it("preserves a hashtag tail when stripping a beg in the middle", () => {
+    const text = `Body line.
+
+Drop a comment if you agree.
+
+#linkedin #careers`;
+    const result = stripEngagementBegParagraph(text);
+    expect(result.stripped).toBe(true);
+    expect(result.text).toContain("Body line");
+    expect(result.text).toContain("#linkedin");
+    expect(result.text).not.toContain("Drop a comment");
+  });
+
+  it("strips a beg in the very last sentence even without a trailing paragraph break", () => {
+    const text = "First line.\n\nThe whole point. Thoughts?";
+    const result = stripEngagementBegParagraph(text);
+    expect(result.stripped).toBe(true);
+    expect(result.text).toContain("First line");
+    expect(result.text).not.toContain("Thoughts?");
+  });
+
+  it("collapses excess blank lines after stripping a middle paragraph", () => {
+    const text = `Top.
+
+Tag someone who needs to hear this.
+
+Bottom.`;
+    const result = stripEngagementBegParagraph(text);
+    expect(result.text).not.toMatch(/\n{3,}/);
+    expect(result.text).toContain("Top");
+    expect(result.text).toContain("Bottom");
+  });
+});
+
 describe("runQualityScan", () => {
   it("does not flag em dash, engagement beg, or banned words on a normal draft", () => {
     const text = `MIT released a paper on consensus protocols. Researchers reduced latency by 23% in benchmarks.
@@ -230,11 +291,42 @@ Worth reading if you build infra.`;
     expect(result.flags.some((f) => f.ruleId === "struct_em_dash")).toBe(true);
   });
 
-  it("flags engagement beg and sets hasEngagementBeg", () => {
-    const text = "Great point. What do you think?";
+  it("flags engagement beg, sets hasEngagementBeg, and strips the beg paragraph", () => {
+    const text = `Body of the post about something interesting.
+
+Now back to the next point with substance.
+
+What do you think? 👇
+
+#hashtag1 #hashtag2`;
     const result = runQualityScan(text, ctx());
     expect(result.hasEngagementBeg).toBe(true);
-    expect(result.flags.some((f) => f.ruleId === "phrase_engagement_beg")).toBe(true);
+    const begFlag = result.flags.find((f) => f.ruleId === "phrase_engagement_beg");
+    expect(begFlag).toBeDefined();
+    expect(begFlag!.action).toBe("regenerate");
+    expect(result.cleanedText).not.toContain("What do you think");
+    expect(result.cleanedText).toContain("#hashtag1");
+    expect(result.cleanedText).toContain("Body of the post");
+  });
+
+  it("does not strip the beg when tellFlagEngagementBeg=false", () => {
+    const text = "Body. What do you think?";
+    const result = runQualityScan(text, ctx({ tellFlagEngagementBeg: false }));
+    expect(result.hasEngagementBeg).toBe(false);
+    expect(result.cleanedText).toContain("What do you think");
+  });
+
+  it("flag actions distinguish auto_strip (markdown) from regenerate (engagement beg)", () => {
+    const text = `**Bold** opening line about MIT research.
+
+A second paragraph with substance.
+
+What do you think?`;
+    const result = runQualityScan(text, ctx());
+    const markdownFlag = result.flags.find((f) => f.ruleId === "struct_markdown_leak");
+    const begFlag = result.flags.find((f) => f.ruleId === "phrase_engagement_beg");
+    expect(markdownFlag?.action).toBe("auto_strip");
+    expect(begFlag?.action).toBe("regenerate");
   });
 
   it("does not run the lex_word_choices scan when tellFlagBannedWords=false", () => {

@@ -301,6 +301,35 @@ const ENGAGEMENT_BEG_PATTERNS: RegExp[] = [
 
 const DECORATIVE_BULLET_EMOJIS = ["🚀", "💡", "🔥", "✅", "💪", "🎯"];
 
+// Detects an engagement-beg phrase and strips the surrounding paragraph
+// (separated by blank lines) from the text. Preserves the hashtag tail —
+// hashtags live in their own paragraph so they survive the strip cleanly.
+// If the beg sits in a middle paragraph (rare), that whole paragraph is
+// removed; engagement begs are stylistic markers, not real arguments, so
+// over-stripping a paragraph is acceptable.
+export function stripEngagementBegParagraph(text: string): {
+  text: string;
+  stripped: boolean;
+  phrase: string | null;
+} {
+  for (const pattern of ENGAGEMENT_BEG_PATTERNS) {
+    pattern.lastIndex = 0;
+    const m = pattern.exec(text);
+    if (!m || m.index === undefined) continue;
+    const before = text.slice(0, m.index);
+    const paraStartIdx = before.lastIndexOf("\n\n");
+    const start = paraStartIdx === -1 ? 0 : paraStartIdx + 2;
+    const afterMatch = text.slice(m.index);
+    const paraEndOffset = afterMatch.indexOf("\n\n");
+    const end = paraEndOffset === -1 ? text.length : m.index + paraEndOffset;
+    const stripped = (text.slice(0, start) + text.slice(end))
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/\s+$/, "");
+    return { text: stripped, stripped: true, phrase: m[0] };
+  }
+  return { text, stripped: false, phrase: null };
+}
+
 // ─── Scan implementations ────────────────────────────────────────────────
 
 export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
@@ -334,13 +363,11 @@ export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
     return { violated: true, details: found.join("; ") };
   },
 
-  phrase_engagement_beg: (text) => {
-    for (const pattern of ENGAGEMENT_BEG_PATTERNS) {
-      const match = text.match(pattern);
-      if (match) return { violated: true, details: match[0] };
-    }
-    return { violated: false };
-  },
+  // Engagement-beg detection happens out-of-band in runQualityScan because
+  // the matched paragraph is auto-stripped before the rest of the rules run.
+  // The flag is added directly there. This stub keeps SCAN_IMPLEMENTATIONS
+  // complete-by-rule-id without double-counting.
+  phrase_engagement_beg: () => ({ violated: false }),
 
   struct_em_dash: (text, ctx) => {
     const count = (text.match(/—/g) ?? []).length;
@@ -567,14 +594,29 @@ export function runQualityScan(
   ctx: RuleContext,
   opts: ScanOptions = {},
 ): QualityScanResult {
-  const { text: cleanedText, stripped: markdownStripped } = stripMarkdown(draftText);
+  // Auto-action #1: strip markdown formatting (LinkedIn renders plain text).
+  const { text: postMarkdownStrip, stripped: markdownStripped } = stripMarkdown(draftText);
 
-  const flags: ScanFlag[] = [];
+  // Auto-action #2: detect-and-strip engagement-beg paragraph. Gated by the
+  // user's tellFlagEngagementBeg setting so users who explicitly want to keep
+  // these phrases (rare, but it's their voice) opt out.
+  let cleanedText = postMarkdownStrip;
   let hasEngagementBeg = false;
   let engagementBegFound: string | null = null;
+  if (ctx.tellFlagEngagementBeg !== false) {
+    const stripResult = stripEngagementBegParagraph(cleanedText);
+    if (stripResult.stripped) {
+      hasEngagementBeg = true;
+      engagementBegFound = stripResult.phrase;
+      cleanedText = stripResult.text;
+    }
+  }
+
+  const flags: ScanFlag[] = [];
 
   for (const rule of getActiveQualityRules(ctx)) {
     if (isRuleGated(rule, ctx)) continue;
+    if (rule.id === "phrase_engagement_beg") continue; // handled out-of-band
     const impl = SCAN_IMPLEMENTATIONS[rule.id];
     if (!impl) continue;
     const finding = impl(cleanedText, ctx, opts);
@@ -586,10 +628,6 @@ export function runQualityScan(
       action: rule.action,
       details: finding.details,
     });
-    if (rule.id === "phrase_engagement_beg") {
-      hasEngagementBeg = true;
-      engagementBegFound = finding.details ?? null;
-    }
   }
 
   if (markdownStripped) {
@@ -598,6 +636,18 @@ export function runQualityScan(
       category: "structural",
       description: "Markdown formatting stripped",
       action: "auto_strip",
+    });
+  }
+
+  if (hasEngagementBeg) {
+    // The rule's canonical action is "regenerate" — callers may attempt one
+    // for a fresh draft, but cleanedText is already beg-free either way.
+    flags.push({
+      ruleId: "phrase_engagement_beg",
+      category: "phrase",
+      description: "Engagement beg detected and removed",
+      action: "regenerate",
+      details: engagementBegFound ?? undefined,
     });
   }
 
