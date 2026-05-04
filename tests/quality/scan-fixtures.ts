@@ -1,5 +1,6 @@
 import type { RuleContext } from "@/lib/ai/quality-rules";
 import type { ScanOptions } from "@/lib/ai/quality-scan";
+import type { FactCheckSourceItem } from "@/lib/ai/fact-check";
 
 // Hand-authored fixtures for the post-generation quality scan. Each fixture
 // targets a specific rule (or rule cluster) and asserts the rule fires on a
@@ -10,6 +11,12 @@ import type { ScanOptions } from "@/lib/ai/quality-scan";
 // these flags fire and no others", because short fixtures naturally trip
 // secondary rules like struct_char_count and struct_sentence_cv. The clean
 // baseline (CLEAN_DRAFT) is the only fixture that asserts "no flags".
+//
+// Fact-check fixtures (added in Phase 1 of factual-accuracy enforcement)
+// supply a `sourceItem` and a `mockedVerifierResponse`. The async fixture
+// runner mocks the Anthropic SDK so the verifier exercises real parsing
+// without making a network call. Fixtures without `sourceItem` use the
+// synchronous runner and behave as before.
 
 export type ScanFixture = {
   name: string;
@@ -19,6 +26,17 @@ export type ScanFixture = {
   opts?: ScanOptions;
   mustFlag: string[];
   mustNotFlag?: string[];
+  // When set, the test runner mocks the Haiku verifier and runs the async
+  // fact-check path in addition to the sync scan. Fixtures without these
+  // fields stay on the sync-only path.
+  sourceItem?: FactCheckSourceItem;
+  mockedVerifierResponse?: {
+    unsupported_claims: Array<{
+      claim: string;
+      kind: "number" | "date" | "quote" | "attribution" | "entity" | "causal" | "first_person";
+      source_says: string;
+    }>;
+  };
 };
 
 const DEFAULT_CTX: RuleContext = {
@@ -264,5 +282,67 @@ Real hard.`,
       ],
     },
     mustFlag: ["struct_no_rhetorical_open", "struct_template_repeat"],
+  },
+
+  {
+    name: "fact_check_invented_number",
+    description:
+      "Draft contains a precise statistic ('23% improvement') that does not appear in the source. " +
+      "The mocked verifier reports the number as unsupported; the async runner asserts the " +
+      "fact_check_unsupported_claims flag fires.",
+    draftText:
+      "MIT shipped a new consensus paper this week. The system saw a 23% improvement over the " +
+      "prior baseline, which is a meaningful jump in this regime. The interesting part is buried " +
+      "in the appendix, which is where their decoupled-pipeline mechanism gets a careful walkthrough.",
+    ctx: DEFAULT_CTX,
+    sourceItem: {
+      title: "MIT consensus paper",
+      url: "https://example.com/paper",
+      content:
+        "Researchers at MIT propose a new consensus protocol with significantly lower latency " +
+        "across several workload types. The paper discusses a decoupled-pipeline mechanism in the appendix.",
+    },
+    mockedVerifierResponse: {
+      unsupported_claims: [
+        {
+          claim: "23% improvement",
+          kind: "number",
+          source_says: "not in source",
+        },
+      ],
+    },
+    mustFlag: ["fact_check_unsupported_claims"],
+  },
+
+  {
+    name: "fact_check_invented_first_person",
+    description:
+      "Draft contains a first-person tracking claim ('I've been tracking this for 18 months') with " +
+      "no voice-profile or context evidence. The mocked verifier flags it as a fabricated " +
+      "first-person experience claim; the async runner asserts the flag fires.",
+    draftText:
+      "I've been tracking agent research pretty closely for the past 18 months. The pace has " +
+      "shifted again this quarter, and the consensus paper from MIT this week is a clean example " +
+      "of why. Most teams care about throughput; this paper actually engineers for the regime where " +
+      "consensus protocols struggle.",
+    ctx: DEFAULT_CTX,
+    sourceItem: {
+      title: "MIT consensus paper",
+      url: "https://example.com/paper",
+      content:
+        "Researchers at MIT propose a new consensus protocol with significantly lower latency. " +
+        "The paper engineers for the regime where consensus protocols struggle, with a focus on " +
+        "decoupling ordering from replication.",
+    },
+    mockedVerifierResponse: {
+      unsupported_claims: [
+        {
+          claim: "I've been tracking agent research pretty closely for the past 18 months",
+          kind: "first_person",
+          source_says: "not in source",
+        },
+      ],
+    },
+    mustFlag: ["fact_check_unsupported_claims"],
   },
 ];

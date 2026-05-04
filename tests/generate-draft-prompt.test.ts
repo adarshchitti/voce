@@ -118,6 +118,40 @@ describe("buildGenerationPrompts em-dash trigger keys off tellFlagEmDash", () =>
     expect(voiceIdx).toBeGreaterThan(overridesIdx);
   });
 
+  it("includes the SOURCE GROUNDING block immediately after expertFrame and before user overrides + voice", () => {
+    const { systemPrompt } = buildGenerationPrompts({
+      ...baseInput,
+      tellFlagEmDash: true,
+      userBannedWords: ["delve"],
+      generationGuidance: "Use varied sentence length.",
+    });
+
+    const expertIdx = systemPrompt.indexOf("You are ghostwriting a LinkedIn post");
+    const groundingIdx = systemPrompt.indexOf("SOURCE GROUNDING (HARD RULE, NO EXCEPTIONS):");
+    const overridesIdx = systemPrompt.indexOf("USER PREFERENCES (HARD RULES, NO EXCEPTIONS):");
+    const voiceIdx = systemPrompt.indexOf("VOICE PROFILE");
+
+    expect(expertIdx).toBeGreaterThan(-1);
+    expect(groundingIdx).toBeGreaterThan(expertIdx);
+    expect(overridesIdx).toBeGreaterThan(groundingIdx);
+    expect(voiceIdx).toBeGreaterThan(overridesIdx);
+
+    // Key contract clauses from the grounding block.
+    expect(systemPrompt).toContain("Numbers, percentages, statistics, counts, dollar figures");
+    expect(systemPrompt).toContain("First-person research claims (I read, I tracked, I built");
+    expect(systemPrompt).toContain("It is better to write a vaguer post than to invent specifics");
+    expect(systemPrompt).toContain("Never invent first-person experience");
+
+    // Confirm the old strictRules factuality bullets were removed and not
+    // duplicated alongside the grounding block.
+    expect(systemPrompt).not.toContain(
+      "Every factual claim must come directly from the provided source article",
+    );
+    expect(systemPrompt).not.toContain(
+      "Do not invent statistics, quotes, or company names not in the source",
+    );
+  });
+
   it("renders userOverridesBlock on the cold-start path (no generationGuidance) when banned words are present", () => {
     const { systemPrompt } = buildGenerationPrompts({
       ...baseInput,
