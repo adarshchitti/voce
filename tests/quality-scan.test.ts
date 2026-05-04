@@ -54,12 +54,12 @@ describe("SCAN_IMPLEMENTATIONS", () => {
       expect(fn("Hello 🚀 world 🔥", ctx({ emojiFrequency: "rare" }), {}).violated).toBe(true);
     });
 
-    it("falls back to limit 2 when profile is unspecified — flags emoji spam", () => {
-      // Was unlimited before Step 5; now an unspecified profile gets a
-      // sensible default so cold-start users aren't a silent-failure mode.
+    it("falls back to limit 0 when profile is unspecified — flags any emoji", () => {
+      // Cold-start users get a hard cap so AI-generated emoji can't slip
+      // through unnoticed. Calibration relaxes this once a profile is set.
+      expect(fn("🚀", ctx(), {}).violated).toBe(true);
       expect(fn("🚀🚀🚀🚀", ctx(), {}).violated).toBe(true);
-      expect(fn("🚀", ctx(), {}).violated).toBe(false);
-      expect(fn("🚀 🔥", ctx(), {}).violated).toBe(false);
+      expect(fn("plain text post", ctx(), {}).violated).toBe(false);
     });
 
     it("does not flag when profile is 'frequent' regardless of count", () => {

@@ -38,66 +38,67 @@ export function scanDraftForAITells(
   };
 }
 
-// Maps the new ScanFlag[] to the legacy {words, phrases, structureIssues}
-// JSON shape consumed by DraftCard.tsx. The shape is kept stable here so
-// the inbox UI doesn't break before its overhaul in Step 6.
-function flagsToLegacyShape(flags: ScanFlag[]): {
-  words: string[];
-  phrases: string[];
-  structureIssues: string[];
-} {
-  const words: string[] = [];
-  const phrases: string[] = [];
-  const structureIssues: string[] = [];
-  for (const flag of flags) {
-    if (flag.ruleId === "struct_markdown_leak") continue;
-    if (flag.category === "lexical") {
-      if (flag.details) {
-        for (const w of flag.details.split(",").map((s) => s.trim()).filter(Boolean)) {
-          words.push(w);
-        }
-      }
-    } else if (flag.category === "phrase") {
-      if (flag.details) phrases.push(flag.details);
-    } else {
-      structureIssues.push(flag.details ? `${flag.description}: ${flag.details}` : flag.description);
-    }
-  }
-  return {
-    words: [...new Set(words)],
-    phrases: [...new Set(phrases)],
-    structureIssues,
-  };
+// JSON shape persisted in draft_queue.ai_tell_flags. One entry per active
+// scan flag, mirroring the QUALITY_RULES structure (rule_id, severity,
+// action, message). Severity is derived from the rule's action:
+//   action='flag'        → severity='warning' (user reviews)
+//   action='auto_strip'  → severity='info'    (already cleaned, fyi)
+//   action='regenerate'  → severity='info'    (already regenerated, fyi)
+//
+// `voice` carries voice-calibration flags from the personalize / regen
+// scoring pass — separate origin, kept out of the main flags array so the
+// inbox UI can render them under a distinct header if it wants.
+export type SerializedFlag = {
+  ruleId: string;
+  category: "lexical" | "phrase" | "structural";
+  severity: "info" | "warning";
+  action: "flag" | "auto_strip" | "regenerate";
+  message: string;
+  details?: string;
+};
+
+export type SerializedAiTellFlags = {
+  flags: SerializedFlag[];
+  voice?: string[];
+};
+
+function severityFromAction(action: ScanFlag["action"]): SerializedFlag["severity"] {
+  return action === "flag" ? "warning" : "info";
+}
+
+function flagsToSerialized(flags: ScanFlag[]): SerializedFlag[] {
+  return flags.map((f) => ({
+    ruleId: f.ruleId,
+    category: f.category,
+    severity: severityFromAction(f.action),
+    action: f.action,
+    message: f.description,
+    ...(f.details ? { details: f.details } : {}),
+  }));
 }
 
 export function serializeAiTellFlags(scanResult: ScanResult): string | null {
-  if (scanResult.clean && !scanResult.markdownStripped) return null;
-  const legacy = flagsToLegacyShape(scanResult.flags);
-  return JSON.stringify({
-    words: legacy.words,
-    phrases: legacy.phrases,
-    structural: scanResult.structural,
-    structureIssues: legacy.structureIssues,
-    markdownStripped: scanResult.markdownStripped,
-  });
+  if (scanResult.flags.length === 0) return null;
+  const payload: SerializedAiTellFlags = {
+    flags: flagsToSerialized(scanResult.flags),
+  };
+  return JSON.stringify(payload);
 }
 
-// Used by the personalize route to merge voice-calibration flags alongside
-// the structural scan.
+// Used by personalize / regenerate to merge voice-calibration flags alongside
+// the quality-scan flags. Voice flags originate from scoreVoiceDetailed
+// (a separate Haiku pass) and don't fit the rule schema, so they get their
+// own array.
 export function buildAiTellFlagsJson(
   scanResult: ScanResult,
   voiceFlags?: string[] | null,
 ): string | null {
-  const payload: Record<string, unknown> = {};
-  if (!scanResult.clean || scanResult.markdownStripped) {
-    const legacy = flagsToLegacyShape(scanResult.flags);
-    payload.words = legacy.words;
-    payload.phrases = legacy.phrases;
-    payload.structural = scanResult.structural;
-    payload.structureIssues = legacy.structureIssues;
-    payload.markdownStripped = scanResult.markdownStripped;
-  }
-  if (voiceFlags?.length) payload.voice = voiceFlags;
-  if (Object.keys(payload).length === 0) return null;
+  const hasFlags = scanResult.flags.length > 0;
+  const hasVoice = (voiceFlags?.length ?? 0) > 0;
+  if (!hasFlags && !hasVoice) return null;
+  const payload: SerializedAiTellFlags = {
+    flags: hasFlags ? flagsToSerialized(scanResult.flags) : [],
+    ...(hasVoice ? { voice: voiceFlags ?? [] } : {}),
+  };
   return JSON.stringify(payload);
 }

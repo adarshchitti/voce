@@ -57,27 +57,77 @@ function isNearStale(staleAfter: string | Date): boolean {
   return diff > 0 && diff < 12 * 60 * 60 * 1000;
 }
 
-function parseAiTellFlags(raw: string | null): {
-  words: string[];
-  phrases: string[];
-  structureIssues: string[];
-  structural: Record<string, unknown> | null;
-  markdownStripped: boolean;
-  voice?: string[];
-} {
-  if (!raw) return { words: [], phrases: [], structureIssues: [], structural: null, markdownStripped: false };
+type UiFlag = {
+  ruleId: string;
+  category: "lexical" | "phrase" | "structural";
+  severity: "info" | "warning";
+  action: "flag" | "auto_strip" | "regenerate";
+  message: string;
+  details?: string;
+};
+
+type ParsedAiTellFlags = {
+  flags: UiFlag[];
+  voice: string[];
+};
+
+// Reads the new {flags: [...]} shape produced by serializeAiTellFlags after
+// the May 2026 quality-rules rebuild. Falls back to the pre-rebuild shape
+// ({words, phrases, structureIssues, markdownStripped}) so drafts already
+// in draft_queue when the rebuild deploys still render meaningfully — those
+// rows fade out within 24–72 h via staleAfter.
+function parseAiTellFlags(raw: string | null): ParsedAiTellFlags {
+  if (!raw) return { flags: [], voice: [] };
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      words: (parsed.words as string[]) ?? [],
-      phrases: (parsed.phrases as string[]) ?? [],
-      structureIssues: ((parsed.structureIssues ?? parsed.structure) as string[]) ?? [],
-      structural: (parsed.structural as Record<string, unknown>) ?? null,
-      markdownStripped: (parsed.markdownStripped as boolean) ?? false,
-      voice: Array.isArray(parsed.voice) ? (parsed.voice as string[]) : undefined,
-    };
+    const voice = Array.isArray(parsed.voice) ? (parsed.voice as string[]) : [];
+    if (Array.isArray(parsed.flags)) {
+      return { flags: parsed.flags as UiFlag[], voice };
+    }
+    // Legacy shape — translate.
+    const flags: UiFlag[] = [];
+    const words = (parsed.words as string[]) ?? [];
+    if (words.length > 0) {
+      flags.push({
+        ruleId: "legacy_word",
+        category: "lexical",
+        severity: "warning",
+        action: "flag",
+        message: "Generic AI vocabulary",
+        details: words.join(", "),
+      });
+    }
+    for (const p of (parsed.phrases as string[]) ?? []) {
+      flags.push({
+        ruleId: "legacy_phrase",
+        category: "phrase",
+        severity: "warning",
+        action: "flag",
+        message: "AI-tell phrase",
+        details: p,
+      });
+    }
+    for (const s of ((parsed.structureIssues ?? parsed.structure) as string[]) ?? []) {
+      flags.push({
+        ruleId: "legacy_structure",
+        category: "structural",
+        severity: "warning",
+        action: "flag",
+        message: s,
+      });
+    }
+    if (parsed.markdownStripped) {
+      flags.push({
+        ruleId: "struct_markdown_leak",
+        category: "structural",
+        severity: "info",
+        action: "auto_strip",
+        message: "Markdown formatting stripped",
+      });
+    }
+    return { flags, voice };
   } catch {
-    return { words: [], phrases: [], structureIssues: [], structural: null, markdownStripped: false };
+    return { flags: [], voice: [] };
   }
 }
 
@@ -209,13 +259,12 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
 
   const charCount = editedText.length;
   const aiParsed = parseAiTellFlags(currentDraft.aiTellFlags ?? null);
-  const lacksSpecificity = aiParsed.structural?.lacksConcreteness === true;
-  const hasFlags =
-    aiParsed.words.length > 0 ||
-    aiParsed.phrases.length > 0 ||
-    aiParsed.structureIssues.length > 0 ||
-    (aiParsed.voice?.length ?? 0) > 0 ||
-    lacksSpecificity;
+  const warningFlags = aiParsed.flags.filter((f) => f.severity === "warning");
+  const infoFlags = aiParsed.flags.filter((f) => f.severity === "info");
+  const hasWarnings = warningFlags.length > 0 || aiParsed.voice.length > 0;
+  const hasInfo = infoFlags.length > 0;
+  const hasAnyFlag = hasWarnings || hasInfo;
+  const showRegenHint = currentDraft.regenerationCount > 0 && hasAnyFlag;
   const previewText = editedText || currentDraft.draftText;
   const isNearExpiry = isNearStale(draft.staleAfter);
 
@@ -259,15 +308,10 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             </span>
           ) : null}
 
-          {hasFlags ? (
+          {hasWarnings ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[11px] font-medium text-[#D97706]">
               <AlertTriangle className="h-2.5 w-2.5" />
-              AI tells detected
-            </span>
-          ) : null}
-          {lacksSpecificity ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[11px] font-medium text-[#B45309]">
-              Low specificity
+              {warningFlags.length + aiParsed.voice.length} flag{warningFlags.length + aiParsed.voice.length === 1 ? "" : "s"} to review
             </span>
           ) : null}
 
@@ -295,6 +339,38 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
                 {currentDraft.seriesContext}
               </CollapsibleContent>
             </Collapsible>
+          ) : null}
+
+          {hasWarnings ? (
+            <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-[12px] text-[#92400E]">
+              <div className="mb-1.5 flex items-center gap-1.5 font-medium text-[#B45309]">
+                <AlertTriangle className="h-3 w-3" />
+                Quality scan — review before approving
+              </div>
+              <ul className="space-y-1 pl-4">
+                {warningFlags.map((f, i) => (
+                  <li key={`${f.ruleId}-${i}`} className="list-disc">
+                    {f.details ? (
+                      <>
+                        <span className="font-medium">{f.message}:</span> {f.details}
+                      </>
+                    ) : (
+                      f.message
+                    )}
+                  </li>
+                ))}
+                {aiParsed.voice.map((v, i) => (
+                  <li key={`voice-${i}`} className="list-disc">
+                    <span className="font-medium">Voice:</span> {v}
+                  </li>
+                ))}
+              </ul>
+              {showRegenHint ? (
+                <p className="mt-2 text-[11px] text-[#A16207]">
+                  Re-scanned with current rules — flags may differ from the original.
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           <textarea
@@ -403,54 +479,14 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
           </div>
         ) : null}
 
-        {hasFlags ? (
-          <div className="space-y-2 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-2 text-[11px] text-[#92400E]">
-            {aiParsed.words.length > 0 ? (
-              <div>
-                <p className="mb-1 font-medium text-[#D97706]">Flagged words</p>
-                <div className="flex flex-wrap gap-1">
-                  {aiParsed.words.map((w) => (
-                    <span key={w} className="rounded-md border border-[#FDE68A] bg-white/80 px-1.5 py-0.5 text-[10px] text-[#B45309]">
-                      {w}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {aiParsed.phrases.length > 0 ? (
-              <div>
-                <p className="mb-1 font-medium text-[#D97706]">Flagged phrases</p>
-                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
-                  {aiParsed.phrases.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {aiParsed.structureIssues.length > 0 ? (
-              <div>
-                <p className="mb-1 font-medium text-[#D97706]">Structure</p>
-                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
-                  {aiParsed.structureIssues.map((s) => (
-                    <li key={s}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {(aiParsed.voice?.length ?? 0) > 0 ? (
-              <div>
-                <p className="mb-1 font-medium text-[#D97706]">Voice calibration</p>
-                <ul className="list-inside list-disc space-y-0.5 text-[#B45309]">
-                  {(aiParsed.voice ?? []).map((v) => (
-                    <li key={v}>{v}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {aiParsed.markdownStripped ? (
-          <p className="text-[10px] text-[#9CA3AF]">Markdown formatting was removed from this draft for scanning.</p>
+        {hasInfo ? (
+          <ul className="space-y-0.5 text-[11px] text-[#6B7280]">
+            {infoFlags.map((f, i) => (
+              <li key={`${f.ruleId}-${i}`}>
+                <span className="font-medium text-[#374151]">Auto-cleaned:</span> {f.details ?? f.message}
+              </li>
+            ))}
+          </ul>
         ) : null}
 
         <div className="flex items-center justify-between gap-2 pt-0.5">

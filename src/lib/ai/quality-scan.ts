@@ -506,8 +506,12 @@ export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
     const freq = ctx.emojiFrequency;
     // When the user's voice profile has no emoji_frequency set (cold-start
     // users, or profiles whose extraction didn't populate the field), fall
-    // back to "occasional" (limit 2). The previous behaviour was unlimited,
-    // which silently let AI emoji spam through for any uncalibrated user.
+    // back to limit 0. Rationale: the product's positioning is anti-AI-slop;
+    // emoji on LinkedIn is a strong AI tell for the technical/professional
+    // archetype. Cold-start drafts shouldn't include emoji the user didn't
+    // ask for. Users who do want emoji see a flag on first draft and are
+    // prompted to calibrate. The previous behaviour (unlimited) silently let
+    // emoji spam through for every uncalibrated user.
     const limit =
       freq === "none"
         ? 0
@@ -517,11 +521,11 @@ export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
             ? 2
             : freq === "frequent"
               ? Number.POSITIVE_INFINITY
-              : 2;
+              : 0;
     if (count <= limit) return { violated: false };
     return {
       violated: true,
-      details: `${count} emoji${count === 1 ? "" : "s"} (profile: ${freq ?? "unspecified — fallback limit 2"})`,
+      details: `${count} emoji${count === 1 ? "" : "s"} (profile: ${freq ?? "unspecified — fallback limit 0 (cold-start default, calibrate to adjust)"})`,
     };
   },
 
