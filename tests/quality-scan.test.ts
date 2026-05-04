@@ -54,8 +54,16 @@ describe("SCAN_IMPLEMENTATIONS", () => {
       expect(fn("Hello 🚀 world 🔥", ctx({ emojiFrequency: "rare" }), {}).violated).toBe(true);
     });
 
-    it("does not flag when profile is unspecified and many emoji present", () => {
-      expect(fn("🚀🚀🚀🚀", ctx(), {}).violated).toBe(false);
+    it("falls back to limit 2 when profile is unspecified — flags emoji spam", () => {
+      // Was unlimited before Step 5; now an unspecified profile gets a
+      // sensible default so cold-start users aren't a silent-failure mode.
+      expect(fn("🚀🚀🚀🚀", ctx(), {}).violated).toBe(true);
+      expect(fn("🚀", ctx(), {}).violated).toBe(false);
+      expect(fn("🚀 🔥", ctx(), {}).violated).toBe(false);
+    });
+
+    it("does not flag when profile is 'frequent' regardless of count", () => {
+      expect(fn("🚀🚀🚀🚀🚀", ctx({ emojiFrequency: "frequent" }), {}).violated).toBe(false);
     });
 
     it("does not flag a draft with no emoji", () => {

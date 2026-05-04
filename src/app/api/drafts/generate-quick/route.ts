@@ -145,7 +145,7 @@ export async function POST(req: Request) {
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const draftParams = {
       ...buildVoicePromptSlice(voiceProfile, { tellFlagEmDash: settings?.tellFlagEmDash ?? true }),

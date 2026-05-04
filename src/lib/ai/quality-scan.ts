@@ -504,6 +504,10 @@ export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
     const count = countEmojis(text);
     if (count === 0) return { violated: false };
     const freq = ctx.emojiFrequency;
+    // When the user's voice profile has no emoji_frequency set (cold-start
+    // users, or profiles whose extraction didn't populate the field), fall
+    // back to "occasional" (limit 2). The previous behaviour was unlimited,
+    // which silently let AI emoji spam through for any uncalibrated user.
     const limit =
       freq === "none"
         ? 0
@@ -511,11 +515,13 @@ export const SCAN_IMPLEMENTATIONS: Record<string, ScanFn> = {
           ? 1
           : freq === "occasional"
             ? 2
-            : Number.POSITIVE_INFINITY;
+            : freq === "frequent"
+              ? Number.POSITIVE_INFINITY
+              : 2;
     if (count <= limit) return { violated: false };
     return {
       violated: true,
-      details: `${count} emoji${count === 1 ? "" : "s"} (profile: ${freq ?? "unspecified"})`,
+      details: `${count} emoji${count === 1 ? "" : "s"} (profile: ${freq ?? "unspecified — fallback limit 2"})`,
     };
   },
 

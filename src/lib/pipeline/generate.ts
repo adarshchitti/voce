@@ -480,7 +480,7 @@ async function runPerUserTavilyFlowForUser(input: {
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const draftParams = {
       ...voiceSlice,
@@ -730,7 +730,7 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const draftParams = {
       ...voiceSlice,

@@ -84,7 +84,7 @@ Rules:
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const result = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,

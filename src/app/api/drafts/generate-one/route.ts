@@ -83,7 +83,7 @@ export async function POST() {
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const draftParams = {
       sentenceLength: voiceProfile?.sentenceLength,

@@ -80,12 +80,19 @@ export function sanitiseInstruction(text: string): string {
   return clean;
 }
 
-// Sanitise banned words — comma separated, each word stripped of special chars
+// Sanitise banned words — each entry is a short freetext term the user wants
+// banned from generation. Run through the same defence as other freetext: HTML
+// tags stripped, prompt-injection markers stripped, length capped at 50 chars,
+// max 50 entries. Punctuation and Unicode (em dash, smart quotes, accents,
+// emoji, etc.) survive intentionally — they're legitimate things to ban,
+// not injection vectors. The previous regex `[^a-zA-Z0-9\s\-']` was too narrow
+// and silently dropped em dashes etc. on save; that defect is what motivated
+// this relaxation.
 export function sanitiseBannedWords(words: string[]): string[] {
   return words
-    .map((w) => w.replace(/[^a-zA-Z0-9\s\-']/g, "").trim())
-    .filter((w) => w.length > 0 && w.length <= 50)
-    .slice(0, 50); // max 50 banned words
+    .map((w) => sanitiseShortText(w, FIELD_LIMITS.bannedWordItem))
+    .filter((w) => w.length > 0)
+    .slice(0, 50);
 }
 
 // Validate that a sample post looks like LinkedIn content

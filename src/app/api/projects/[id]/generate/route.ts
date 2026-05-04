@@ -256,7 +256,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const generated = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,

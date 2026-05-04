@@ -63,7 +63,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         ),
       )
       .orderBy(desc(draftMemories.createdAt))
-      .limit(3);
+      .limit(5);
 
     const generated = await generateDraft({
       sentenceLength: voiceProfile?.sentenceLength,
