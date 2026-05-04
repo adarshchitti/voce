@@ -1,35 +1,7 @@
-// AI tell patterns specific to LinkedIn
-// Injected into every generation prompt and used in post-generation scan
-
-export const AI_TELL_BLOCKLIST_PROMPT = `
-WORD CHOICES — always prefer the simpler word:
-- "use" not "leverage", "utilize", or "employ"
-- "show" not "demonstrate", "illustrate", or "underscore"
-- "build" not "develop", "construct", or "create" (unless create is genuinely right)
-- "find" not "discover", "uncover", or "identify"
-- "change" not "transform", "revolutionize", or "reimagine"
-- "important" not "crucial", "pivotal", "paramount", or "critical"
-- "different" not "unique", "unprecedented", or "novel"
-- "help" not "empower", "enable", or "foster"
-- "use" not "harness" or "leverage"
-- "think about" not "navigate" (metaphorically)
-- "big" not "transformative", "groundbreaking", or "game-changing"
-- Specific concrete adjectives over "robust", "holistic", "seamless", "comprehensive"
-- Specific names over "ecosystem", "landscape", "paradigm", "tapestry", "realm"
-
-STRUCTURAL RULES:
-- Do NOT put every sentence on its own line separated by blank lines (AI accordion)
-- Do NOT use the pattern: hook → numbered list → inspirational closer (AI sandwich)
-- Do NOT end with any engagement request or question directed at the reader
-- Do NOT use 🚀 💡 🔥 ✅ 💪 🎯 as bullet starters or decoration
-- Do NOT use → or • as bullet substitutes mid-post
-- Do NOT use em dashes — in more than one sentence per post
-- Do NOT use ALL CAPS for emphasis
-- Do NOT open with "I" as the first word of the post
-- Do NOT open with a rhetorical question
-- Max 3 hashtags, placed at the very end only if genuinely specific to the topic
-- Do NOT include any URL in the post body
-`.trim();
+// AI tell patterns specific to LinkedIn.
+// Generation-side rules now live in src/lib/ai/quality-rules.ts (single
+// source of truth). This file retains only the post-generation LLM scan
+// scaffolding (deleted in Step 2 of the rebuild).
 
 export interface SensitivitySettings {
   tellFlagNumberedLists: "always" | "three_plus" | "never";

@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_TELL_BLOCKLIST_PROMPT } from "@/lib/ai/ai-tells";
 import type { StructureTemplate } from "@/lib/ai/structure-templates";
 import { sanitiseGenerationPromptInputs } from "@/lib/ai/prompts";
+import {
+  buildBlocklistPromptSection,
+  buildUserOverridesPromptSection,
+  type RuleContext,
+} from "@/lib/ai/quality-rules";
 import { sanitiseShortText, FIELD_LIMITS } from "@/lib/sanitise";
 
 const MAX_POST_CHARS = 3000;
@@ -122,24 +126,17 @@ export function buildGenerationPrompts(input: GenerateDraftInput): {
   const hasStructuredFields = input.sentenceLength || input.hookStyle || input.pov;
   const hasGuidance = Boolean(input.generationGuidance?.trim());
 
-  // user_settings.tell_flag_em_dash is the canonical "user does not want em
-  // dashes" signal. We previously keyed off userBannedWords containing "—",
-  // but sanitiseBannedWords strips the em-dash character on save, so that path
-  // never fires from the normal save flow.
-  const userWantsNoEmDash = input.tellFlagEmDash === true;
-  const bannedWordsForPrompt = safe.userBannedWords ?? [];
-  const hasUserOverrides = bannedWordsForPrompt.length > 0 || Boolean(safe.userNotes);
-  const userOverridesBlock = hasUserOverrides
-    ? [
-        "USER PREFERENCES (HARD RULES, NO EXCEPTIONS):",
-        bannedWordsForPrompt.length > 0
-          ? `- Never use these words or characters: ${bannedWordsForPrompt.join(", ")}. Not once. Zero. This is a hard rule that overrides any other guidance below.`
-          : null,
-        safe.userNotes ? `- Additional notes from the user: ${safe.userNotes}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : "";
+  // userOverridesBlock and the AI-tell blocklist are both views of the
+  // unified QUALITY_RULES system. tell_flag_* fields swap default→strict
+  // prompt instructions per rule.
+  const ruleContext: RuleContext = {
+    userBannedWords: input.userBannedWords ?? null,
+    userNotes: input.userNotes ?? null,
+    tellFlagEmDash: input.tellFlagEmDash ?? null,
+    emojiFrequency: input.emojiFrequency ?? null,
+  };
+  const userOverridesBlock = buildUserOverridesPromptSection(ruleContext);
+  const aiTellBlocklist = buildBlocklistPromptSection(ruleContext);
 
   const legacyVoiceSection = hasStructuredFields
     ? `- Sentence length: ${input.sentenceLength ?? "medium"}
@@ -278,7 +275,7 @@ ${input.rulesManifest}\n`
 - Every factual claim must come directly from the provided source article
 - Do not invent statistics, quotes, or company names not in the source${rejectionText}${instructionSuffix}`;
 
-  let systemPrompt = [
+  const systemPrompt = [
     expertFrame,
     userOverridesBlock,
     voiceSection,
@@ -290,20 +287,10 @@ ${input.rulesManifest}\n`
     memoriesBlock,
     rulesBlock,
     strictRules,
-    AI_TELL_BLOCKLIST_PROMPT,
+    aiTellBlocklist,
   ]
     .filter(Boolean)
     .join("\n\n");
-
-  // Brittle: relies on the exact text of the em-dash line in AI_TELL_BLOCKLIST_PROMPT.
-  // If that line changes, the override silently no-ops. If this becomes load-bearing,
-  // refactor AI_TELL_BLOCKLIST_PROMPT into a builder that accepts user overrides.
-  if (userWantsNoEmDash) {
-    systemPrompt = systemPrompt.replace(
-      "Do NOT use em dashes — in more than one sentence per post",
-      "Do NOT use em dashes (—) at all. Zero. The user has explicitly banned them.",
-    );
-  }
 
   const userMessage = `Write a LinkedIn post based on this article.
 
