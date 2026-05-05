@@ -19,6 +19,7 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   const [quickRemaining, setQuickRemaining] = useState(3);
   const [lastCronStatus, setLastCronStatus] = useState<string | null>(null);
   const [lastCronAt, setLastCronAt] = useState<string | null>(null);
+  const [hasPersonalization, setHasPersonalization] = useState(false);
   const { showToast } = useToast();
 
   const loadDrafts = () => {
@@ -41,11 +42,20 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
     Promise.all([fetch("/api/voice"), fetch("/api/topics")])
       .then(async ([voiceRes, topicsRes]) => {
         if (!voiceRes.ok || !topicsRes.ok) return;
-        const voiceData = (await voiceRes.json()) as { voiceProfile?: { calibrationQuality?: string | null } | null };
+        const voiceData = (await voiceRes.json()) as {
+          voiceProfile?: {
+            calibrationQuality?: string | null;
+            personalContext?: string | null;
+            personalContextComponents?: string[] | null;
+          } | null;
+        };
         const topicsData = (await topicsRes.json()) as { topics?: unknown[] };
         const isUncalibrated = (voiceData.voiceProfile?.calibrationQuality ?? "uncalibrated") === "uncalibrated";
         const hasNoTopics = (topicsData.topics ?? []).length === 0;
         setHasIncompleteSetup(isUncalibrated || hasNoTopics);
+        const hasRawCtx = !!voiceData.voiceProfile?.personalContext?.trim();
+        const hasComponents = (voiceData.voiceProfile?.personalContextComponents?.length ?? 0) > 0;
+        setHasPersonalization(hasRawCtx || hasComponents);
       })
       .catch(() => setHasIncompleteSetup(false));
   }, []);
@@ -264,6 +274,7 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
           <DraftCard
             key={draft.id}
             draft={draft}
+            hasPersonalization={hasPersonalization}
             onRemoved={() => setDrafts((prev) => prev.filter((d) => d.id !== draft.id))}
           />
         ))}

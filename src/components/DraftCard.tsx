@@ -160,7 +160,57 @@ function FactCheckFlagBody({ details }: { details?: string }) {
   );
 }
 
-export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRemoved: () => void }) {
+type PersonalizationMetadata = {
+  mode: "targeted" | "no_fit" | "legacy_raw_context";
+  componentUsed: string | null;
+  rationale: string | null;
+};
+
+// Renders the small notice under the "Add personal angle" button after a
+// successful personalization. Three states (per spec):
+//   - targeted: a specific component was woven in
+//   - no_fit: components exist but none matched the topic
+//   - legacy_raw_context: components empty, raw text used (extraction may
+//                         not have produced specifics yet)
+function PersonalizationNotice({ meta }: { meta: PersonalizationMetadata }) {
+  if (meta.mode === "targeted" && meta.componentUsed) {
+    const truncated =
+      meta.componentUsed.length > 80
+        ? `${meta.componentUsed.slice(0, 80)}…`
+        : meta.componentUsed;
+    return (
+      <p className="text-[11px] text-[#6B7280]">
+        Personalized using: <span className="text-[#374151]">{truncated}</span>
+      </p>
+    );
+  }
+  if (meta.mode === "no_fit") {
+    return (
+      <p className="text-[11px] text-[#6B7280]">
+        No personal experience fit this topic. Personalized for tone.
+      </p>
+    );
+  }
+  return (
+    <p className="text-[11px] text-[#6B7280]">
+      Personalized for tone. Add more specific experiences in{" "}
+      <a href="/settings" className="text-[#2563EB] hover:underline">
+        settings
+      </a>{" "}
+      to enable targeted personalization.
+    </p>
+  );
+}
+
+export default function DraftCard({
+  draft,
+  onRemoved,
+  hasPersonalization = true,
+}: {
+  draft: DraftView;
+  onRemoved: () => void;
+  hasPersonalization?: boolean;
+}) {
   const [currentDraft, setCurrentDraft] = useState(draft);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(currentDraft.editedText ?? currentDraft.draftText);
@@ -171,6 +221,8 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
   const [isPersonalizing, setIsPersonalizing] = useState(false);
   const [showPreviewMobile, setShowPreviewMobile] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
+  const [personalizationNotice, setPersonalizationNotice] =
+    useState<PersonalizationMetadata | null>(null);
   const [useCustomTime, setUseCustomTime] = useState(false);
   const [customDate, setCustomDate] = useState(new Date().toISOString().split("T")[0] ?? "");
   const [customTime, setCustomTime] = useState("09:00");
@@ -273,11 +325,23 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
         method: "POST",
       });
       if (!response.ok) {
-        throw new Error("Failed to personalize");
+        const errBody = (await response.json().catch(() => ({}))) as {
+          code?: string;
+          error?: string;
+        };
+        if (errBody.code === "NO_PERSONAL_CONTEXT") {
+          showToast("Add personal experiences in settings to use this feature", "error");
+          return;
+        }
+        throw new Error(errBody.error ?? "Failed to personalize");
       }
-      const updated = (await response.json()) as Partial<DraftView>;
-      setCurrentDraft((prev) => ({ ...prev, ...updated }));
-      setEditedText((updated.editedText ?? updated.draftText ?? editedText) as string);
+      const updated = (await response.json()) as Partial<DraftView> & {
+        personalization?: PersonalizationMetadata;
+      };
+      const { personalization, ...draftFields } = updated;
+      setCurrentDraft((prev) => ({ ...prev, ...draftFields }));
+      setEditedText((draftFields.editedText ?? draftFields.draftText ?? editedText) as string);
+      if (personalization) setPersonalizationNotice(personalization);
       showToast("Personal angle added");
     } catch {
       showToast("Failed to personalize", "error");
@@ -456,14 +520,26 @@ export default function DraftCard({ draft, onRemoved }: { draft: DraftView; onRe
             <p className="text-right text-[11px] tabular-nums text-[#9CA3AF]">{regenInstruction.length} / 300</p>
           </div>
 
-          <button
-            onClick={handlePersonalize}
-            disabled={isPersonalizing}
-            className="inline-flex items-center gap-1.5 self-start text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB] disabled:opacity-50"
-          >
-            {isPersonalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {isPersonalizing ? "Adding personal angle..." : "Add personal angle"}
-          </button>
+          {hasPersonalization ? (
+            <button
+              onClick={handlePersonalize}
+              disabled={isPersonalizing}
+              className="inline-flex items-center gap-1.5 self-start text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB] disabled:opacity-50"
+            >
+              {isPersonalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {isPersonalizing ? "Adding personal angle..." : "Add personal angle"}
+            </button>
+          ) : (
+            <p className="self-start text-[11px] text-[#9CA3AF]">
+              <a href="/settings" className="text-[#2563EB] hover:underline">
+                Add personal experiences
+              </a>{" "}
+              in settings to enable personalization on drafts.
+            </p>
+          )}
+          {personalizationNotice ? (
+            <PersonalizationNotice meta={personalizationNotice} />
+          ) : null}
         </div>
 
         <div className="border-t border-[#E5E7EB] bg-[#F7F7F7] p-4 md:border-t-0">

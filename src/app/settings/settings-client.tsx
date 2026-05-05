@@ -532,6 +532,8 @@ export default function SettingsClient({ subscription }: { subscription: Setting
   const [paragraphStyle, setParagraphStyle] = useState<string | null>(null);
   const [emojiFrequency, setEmojiFrequency] = useState<string | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [personalContextComponents, setPersonalContextComponents] = useState<string[]>([]);
+  const [isReExtracting, setIsReExtracting] = useState(false);
   const [emojiNeverOverride, setEmojiNeverOverride] = useState(false);
   const [newSignaturePhrase, setNewSignaturePhrase] = useState("");
   const [newNeverPattern, setNewNeverPattern] = useState("");
@@ -589,6 +591,7 @@ export default function SettingsClient({ subscription }: { subscription: Setting
         setPersonalContext(incomingPersonalContext);
       }
     }
+    setPersonalContextComponents(((vp.personalContextComponents as string[] | null) ?? []).filter(Boolean));
     setSamplePosts(parseLoadedSamplePosts(vp.samplePosts as string[] | undefined));
     setSentenceLength((vp.sentenceLength as string | null) ?? null);
     setHookStyle((vp.hookStyle as string | null) ?? null);
@@ -700,6 +703,35 @@ export default function SettingsClient({ subscription }: { subscription: Setting
       result.ok ? "Voice profile saved" : (result.error ?? "Failed to save"),
       result.ok ? "success" : "error",
     );
+  }
+
+  async function reExtractPersonalContext() {
+    if (isReExtracting) return;
+    setIsReExtracting(true);
+    try {
+      const response = await fetch("/api/voice/extract-personal-context", { method: "POST" });
+      const data = (await response.json().catch(() => ({}))) as {
+        components?: string[];
+        count?: number;
+        error?: string;
+        code?: string;
+      };
+      if (!response.ok) {
+        if (data.code === "NO_PERSONAL_CONTEXT") {
+          showToast("Save personal context first, then re-extract", "error");
+        } else {
+          showToast(data.error ?? "Failed to extract", "error");
+        }
+        return;
+      }
+      const components = data.components ?? [];
+      setPersonalContextComponents(components);
+      showToast(`Extracted ${components.length} component${components.length === 1 ? "" : "s"}`, "success");
+    } catch {
+      showToast("Failed to extract", "error");
+    } finally {
+      setIsReExtracting(false);
+    }
   }
 
   function addPost() {
@@ -1218,11 +1250,25 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                   />
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-[13px] font-medium text-[#374151]">Personal context</label>
-                  <p className="text-[12px] text-[#9CA3AF]">Used by the personal-angle draft enhancement</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[13px] font-medium text-[#374151]">Personal context</label>
+                    <button
+                      type="button"
+                      onClick={reExtractPersonalContext}
+                      disabled={isReExtracting || !personalContext.trim()}
+                      className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2 py-0.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
+                    >
+                      {isReExtracting ? "Extracting…" : "Re-extract components"}
+                    </button>
+                  </div>
+                  <p className="text-[12px] text-[#9CA3AF]">
+                    Specific, falsifiable experiences (not a generic bio). Examples: &quot;shipped 3 RAG
+                    systems last year&quot;, &quot;led security at Stripe 2019-2022&quot;. Specifics power
+                    targeted personalization on drafts.
+                  </p>
                   <textarea
-                    rows={2}
-                    maxLength={500}
+                    rows={5}
+                    maxLength={1500}
                     value={personalContext}
                     onChange={(e) => {
                       touchedVoiceTextFields.current.personalContext = true;
@@ -1230,6 +1276,28 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                     }}
                     className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                   />
+                  {personalContextComponents.length > 0 ? (
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-wider text-[#9CA3AF]">
+                        Extracted components ({personalContextComponents.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {personalContextComponents.map((component, i) => (
+                          <span
+                            key={`${i}-${component.slice(0, 20)}`}
+                            className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2 py-0.5 text-[11px] text-[#6B7280]"
+                            title={component}
+                          >
+                            {component.length > 60 ? `${component.slice(0, 60)}…` : component}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : personalContext.trim() ? (
+                    <p className="text-[11px] text-[#9CA3AF]">
+                      No components extracted yet. Save the profile or click &quot;Re-extract components&quot;.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
