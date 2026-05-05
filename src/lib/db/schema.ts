@@ -8,6 +8,7 @@ import {
   timestamp,
   time,
   json,
+  jsonb,
   date,
   unique,
 } from "drizzle-orm/pg-core";
@@ -186,7 +187,16 @@ export const voiceProfiles = pgTable("voice_profiles", {
   userNotes: text("user_notes"),
   // Freetext override: "I never use bullet lists. I always end on a question."
   personalContext: text("personal_context"),
-  // User-written background used for "Add personal angle" draft personalization
+  // User-written background used for "Add personal angle" draft personalization.
+  // Extracted into discrete components on save (see personalContextComponents).
+  personalContextComponents: jsonb("personal_context_components")
+    .$type<string[]>()
+    .default(sql`'[]'::jsonb`),
+  // Discrete experiential components extracted from personal_context via Haiku.
+  // Each entry is one specific, falsifiable experience (e.g. "shipped 3 RAG
+  // systems last year"). Currently consumed only by the personalize route's
+  // selection step. TODO (Phase 2 / work stream 2): evaluate whether to
+  // surface these into daily generation; do not pre-build that path.
 
   // Raw backup of last LLM extraction — kept for debugging, not used in prompts
   extractedPatterns: json("extracted_patterns"),

@@ -1,0 +1,1 @@
+ALTER TABLE "voice_profiles" ADD COLUMN "personal_context_components" jsonb DEFAULT '[]'::jsonb;

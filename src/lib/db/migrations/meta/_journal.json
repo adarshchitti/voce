@@ -71,6 +71,13 @@
       "when": 1777839536545,
       "tag": "0009_phase2_research_observability",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777950593970,
+      "tag": "0010_personal_context_components",
+      "breakpoints": true
     }
   ]
 }

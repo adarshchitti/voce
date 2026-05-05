@@ -15,6 +15,7 @@ const fixtureVoiceProfile = {
   userBannedWords: ["leverage", "synergy"],
   userNotes: "Never end with a question.",
   personalContext: null,
+  personalContextComponents: [],
   extractedPatterns: { emojiFrequency: "rare" },
   calibrated: true,
   avgSentenceLengthWords: 14,

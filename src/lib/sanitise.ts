@@ -112,7 +112,7 @@ export const FIELD_LIMITS = {
   samplePost: 3000,
   goal: 300,
   targetAudience: 200,
-  personalContext: 500,
+  personalContext: 1500,
   userNotes: 500,
   topicLabel: 60,
   tavilyQuery: 150,
