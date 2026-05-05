@@ -202,12 +202,19 @@ Rules:
     // (older drafts predating the research-item link). Skip the verifier
     // rather than synthesizing a fake source — runFactCheckOrSkip handles
     // the null case with a structured log.
+    //
+    // When a personal-context component was selected, pass it to the
+    // verifier as permittedClaims so the matching first-person claim
+    // doesn't trip the source-grounding flag (concern 8 from the build
+    // report — every successful targeted personalization would otherwise
+    // trigger a false-positive on the very claim it just injected).
     const factCheckResult = await runFactCheckOrSkip(
       initialScan,
       researchItem
         ? { title: researchItem.title, url: researchItem.url, content: researchItem.summary ?? "" }
         : null,
       "route.personalize",
+      selectedComponent,
     );
     const scanResult = factCheckResult.scanResult;
     const voiceResult =

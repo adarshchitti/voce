@@ -10,6 +10,7 @@ import {
   verifyFactualClaims,
   type FactCheckOutcome,
   type FactCheckSourceItem,
+  type PermittedClaims,
 } from "@/lib/ai/fact-check";
 
 // Public surface for the post-generation scan. Now a thin sync wrapper
@@ -97,6 +98,12 @@ export function serializeAiTellFlags(scanResult: ScanResult): string | null {
 // FactCheckOutcome describing what happened — telemetry the daily cron paths
 // thread back into GenerateUserResult.
 //
+// Optional `permittedClaims` carries pre-approved first-person experience
+// (typically the personal-context component the personalize route selected).
+// When supplied, the verifier treats matching first-person claims as
+// supported, so the personalization feature doesn't trigger a false-positive
+// flag on the very claim it just injected.
+//
 // Architectural note: we keep this out of runQualityScan / SCAN_IMPLEMENTATIONS
 // because those are synchronous and source-unaware. Adding async + a new
 // per-rule input would force a refactor of every existing scan implementation
@@ -110,8 +117,9 @@ export function serializeAiTellFlags(scanResult: ScanResult): string | null {
 export async function applyFactCheck(
   scanResult: ScanResult,
   sourceItem: FactCheckSourceItem | null,
+  permittedClaims: PermittedClaims | null = null,
 ): Promise<{ scanResult: ScanResult; outcome: FactCheckOutcome }> {
-  const outcome = await verifyFactualClaims(scanResult.draftText, sourceItem);
+  const outcome = await verifyFactualClaims(scanResult.draftText, sourceItem, permittedClaims);
   if (!outcome.flag) return { scanResult, outcome };
   const merged: ScanResult = {
     ...scanResult,
@@ -126,23 +134,32 @@ export async function applyFactCheck(
 // Returns the (possibly-merged) ScanResult plus the outcome. The caller is
 // responsible for deciding what to do with the outcome (typically: aggregate
 // into GenerateUserResult for cron telemetry, or discard for ad-hoc routes).
+//
+// `permittedClaims` is optional and forwarded as-is. Generation flows pass
+// null (default); the personalize route passes the selected component when
+// the targeted-angle path fired.
 export async function runFactCheckOrSkip(
   scanResult: ScanResult,
   sourceItem: { title?: string | null; url?: string | null; content?: string | null } | null,
   contextLabel: string,
+  permittedClaims: PermittedClaims | null = null,
 ): Promise<{ scanResult: ScanResult; outcome: FactCheckOutcome }> {
   const hasContent = !!sourceItem?.content?.trim();
   const hasTitle = !!sourceItem?.title?.trim();
   const hasUrl = !!sourceItem?.url?.trim();
   if (!hasContent || !hasTitle || !hasUrl) {
     console.info(`[fact-check] verifier skipped (${contextLabel}): no source available`);
-    return applyFactCheck(scanResult, null);
+    return applyFactCheck(scanResult, null, permittedClaims);
   }
-  return applyFactCheck(scanResult, {
-    title: sourceItem!.title!.trim(),
-    url: sourceItem!.url!.trim(),
-    content: sourceItem!.content!.trim(),
-  });
+  return applyFactCheck(
+    scanResult,
+    {
+      title: sourceItem!.title!.trim(),
+      url: sourceItem!.url!.trim(),
+      content: sourceItem!.content!.trim(),
+    },
+    permittedClaims,
+  );
 }
 
 // Used by personalize / regenerate to merge voice-calibration flags alongside

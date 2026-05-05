@@ -147,6 +147,99 @@ describe("parseVerifierResponse (internal)", () => {
   });
 });
 
+describe("verifyFactualClaims with permittedClaims", () => {
+  const PERMITTED = "shipped 3 RAG systems at a B2B startup in 2024";
+
+  it("does not flag a first-person claim that matches the permitted context", async () => {
+    // The verifier (mocked) sees the permitted context in the prompt and
+    // returns no unsupported claims for the matching first-person line.
+    messagesCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"unsupported_claims":[]}' }],
+    });
+    const result = await verifyFactualClaims(
+      "I shipped 3 RAG systems at a B2B startup last year. The lessons translate.",
+      SOURCE,
+      PERMITTED,
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.flag).toBeNull();
+
+    // Assert the prompt actually contains the permitted-context section so
+    // the verifier had the information needed to make the right call.
+    const sentPrompt = messagesCreate.mock.calls[0]?.[0]?.messages?.[0]?.content;
+    expect(sentPrompt).toContain("permitted personal context");
+    expect(sentPrompt).toContain(PERMITTED);
+    expect(sentPrompt).toContain("Treat any first-person claim that matches");
+  });
+
+  it("still flags an unrelated fabricated first-person claim even with permittedClaims set", async () => {
+    // Draft contains the permitted claim AND a separate fabricated one
+    // ("I've been tracking agent research for 18 months"). The mocked
+    // verifier flags only the unrelated one.
+    messagesCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            unsupported_claims: [
+              {
+                claim: "I've been tracking agent research for the past 18 months",
+                kind: "first_person",
+                source_says: "not in source",
+              },
+            ],
+          }),
+        },
+      ],
+    });
+    const result = await verifyFactualClaims(
+      "I shipped 3 RAG systems at a B2B startup. I've been tracking agent research for the past 18 months.",
+      SOURCE,
+      PERMITTED,
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.flag).not.toBeNull();
+    expect(result.unsupportedClaimCount).toBe(1);
+    expect(result.flag!.details).toContain("agent research");
+    expect(result.flag!.details).not.toContain("RAG systems");
+  });
+
+  it("omits the permitted-context section when permittedClaims is null", async () => {
+    messagesCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"unsupported_claims":[]}' }],
+    });
+    await verifyFactualClaims("Draft.", SOURCE, null);
+    const sentPrompt = messagesCreate.mock.calls[0]?.[0]?.messages?.[0]?.content;
+    expect(sentPrompt).not.toContain("permitted personal context");
+    expect(sentPrompt).not.toContain("Treat any first-person claim that matches");
+  });
+
+  it("permittedClaims defaults to null when omitted (preserves prior signature)", async () => {
+    messagesCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"unsupported_claims":[]}' }],
+    });
+    await verifyFactualClaims("Draft.", SOURCE);
+    const sentPrompt = messagesCreate.mock.calls[0]?.[0]?.messages?.[0]?.content;
+    expect(sentPrompt).not.toContain("permitted personal context");
+  });
+});
+
+describe("buildVerifierPrompt (internal)", () => {
+  const SRC = { title: "T", url: "U", content: "C" };
+  it("renders without permitted-claims block by default", () => {
+    const prompt = __testing.buildVerifierPrompt("draft", SRC, null);
+    expect(prompt).not.toContain("permitted personal context");
+    expect(prompt).toContain("Source article:");
+  });
+  it("renders the permitted-claims block when set", () => {
+    const prompt = __testing.buildVerifierPrompt("draft", SRC, "led security at Stripe 2019-2022");
+    expect(prompt).toContain('"led security at Stripe 2019-2022"');
+    expect(prompt).toContain(
+      "Other claim kinds (numbers, dates, named entities, attributions) are still verified against the source only",
+    );
+  });
+});
+
 describe("formatClaimsDetails (internal)", () => {
   it("joins claims with pipe separators and includes source-says", () => {
     const out = __testing.formatClaimsDetails([

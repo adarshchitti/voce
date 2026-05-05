@@ -22,6 +22,18 @@ export type FactCheckSourceItem = {
   content: string;
 };
 
+// Optional input layered on top of the source article. Carries first-person
+// experience claims that have been pre-approved for this draft (e.g. the
+// component the personalize route selected from the user's
+// personal_context_components). The verifier treats matching first-person
+// claims as supported and only flags claims that are absent from BOTH the
+// source content AND the permitted context.
+//
+// Without this plumbing, every successful "Add personal angle" use would
+// produce a false-positive fact-check flag on the personal claim that the
+// personalization just injected — undermining confidence in both features.
+export type PermittedClaims = string;
+
 export type FactCheckOutcome = {
   attempted: boolean;
   succeeded: boolean;
@@ -65,14 +77,27 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey });
 }
 
-function buildVerifierPrompt(draftText: string, sourceItem: FactCheckSourceItem): string {
+function buildVerifierPrompt(
+  draftText: string,
+  sourceItem: FactCheckSourceItem,
+  permittedClaims: PermittedClaims | null,
+): string {
+  const permittedSection = permittedClaims
+    ? `
+
+The user's permitted personal context for this draft is:
+"${permittedClaims}"
+
+Treat any first-person claim that matches this context as supported. Only flag first-person claims that are not in the source AND not in the permitted context. Other claim kinds (numbers, dates, named entities, attributions) are still verified against the source only — the permitted context covers personal experience, not external facts.`
+    : "";
+
   return `You are verifying a LinkedIn draft against its source article. Identify every specific factual claim in the draft and determine whether each is directly supported by the source.
 
 Source article:
 Title: ${sourceItem.title}
 URL: ${sourceItem.url}
 Content:
-${sourceItem.content}
+${sourceItem.content}${permittedSection}
 
 Draft:
 ${draftText}
@@ -165,18 +190,24 @@ async function callHaikuVerifier(prompt: string): Promise<string> {
 // (when claims are unsupported) a ScanFlag the caller can merge into the
 // existing scan result.
 //
+// Optional `permittedClaims` carries pre-approved first-person experience
+// (typically the component the personalize route selected from the user's
+// personal_context_components). When set, first-person claims matching the
+// permitted text are treated as supported.
+//
 // Fail-open: any error path returns { attempted: true, succeeded: false,
 // flag: null } so the draft generation continues unaffected.
 export async function verifyFactualClaims(
   draftText: string,
   sourceItem: FactCheckSourceItem | null,
+  permittedClaims: PermittedClaims | null = null,
 ): Promise<FactCheckOutcome> {
   if (!sourceItem || !sourceItem.content || sourceItem.content.trim().length === 0) {
     return SKIPPED_NO_SOURCE;
   }
   const startedAt = Date.now();
   try {
-    const prompt = buildVerifierPrompt(draftText, sourceItem);
+    const prompt = buildVerifierPrompt(draftText, sourceItem, permittedClaims);
     const raw = await callHaikuVerifier(prompt);
     const parsed = parseVerifierResponse(raw);
     const durationMs = Date.now() - startedAt;
@@ -215,4 +246,5 @@ export async function verifyFactualClaims(
 export const __testing = {
   parseVerifierResponse,
   formatClaimsDetails,
+  buildVerifierPrompt,
 };
