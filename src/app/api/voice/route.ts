@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { extractVoicePatterns } from "@/lib/ai/extract-voice";
+import { extractPersonalContextComponents } from "@/lib/ai/extract-personal-context";
 import {
   FIELD_LIMITS,
   isValidSamplePost,
@@ -63,6 +64,25 @@ export async function PUT(request: Request) {
             toneMarkers: existing?.toneMarkers ?? [],
           })
         : null;
+
+    // Re-extract personal_context_components only when the personalContext
+    // value actually changed. The existing row's value is already in scope
+    // (loaded a few lines above) so this comparison is free. This keeps
+    // routine voice-profile saves (where the user edits sample posts or
+    // banned words) from incurring a Haiku call. When personalContext is
+    // explicitly cleared, also clear components.
+    let personalContextComponents: string[] | undefined = undefined;
+    if (body.personalContext !== undefined) {
+      const previous = existing?.personalContext ?? null;
+      if (personalContext !== previous) {
+        if (personalContext) {
+          const extracted = await extractPersonalContextComponents(personalContext);
+          personalContextComponents = extracted.components;
+        } else {
+          personalContextComponents = [];
+        }
+      }
+    }
     const samplePostCount = samplePosts.length;
     const calibrationQuality =
       samplePostCount <= 2 ? "uncalibrated" : samplePostCount <= 5 ? "partial" : samplePostCount <= 7 ? "mostly" : "full";
@@ -74,6 +94,7 @@ export async function PUT(request: Request) {
         rawDescription,
         samplePosts,
         personalContext,
+        ...(personalContextComponents !== undefined ? { personalContextComponents } : {}),
         sentenceLength: patterns?.sentenceLength ?? null,
         hookStyle: patterns?.hookStyle ?? null,
         pov: patterns?.pov ?? null,
@@ -110,6 +131,7 @@ export async function PUT(request: Request) {
           rawDescription,
           samplePosts,
           personalContext,
+          ...(personalContextComponents !== undefined ? { personalContextComponents } : {}),
           sentenceLength: patterns?.sentenceLength ?? null,
           hookStyle: patterns?.hookStyle ?? null,
           pov: patterns?.pov ?? null,
