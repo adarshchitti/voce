@@ -26,6 +26,24 @@ interface TopicRow {
   querySuggested?: boolean;
 }
 
+type SuggestedSourceCandidate = { url: string; name: string; why: string };
+
+type SourceSuggestionState =
+  | { kind: "loading" }
+  | {
+      kind: "results";
+      candidates: SuggestedSourceCandidate[];
+      selected: Record<string, boolean>;
+      stats?: { requested: number; validated: number };
+    }
+  | { kind: "error"; message: string };
+
+const AUTO_SUGGEST_SOURCES_ENABLED = process.env.NEXT_PUBLIC_AUTO_SUGGEST_SOURCES === "true";
+
+function normaliseSourceUrlForCompare(u: string): string {
+  return u.trim().toLowerCase().replace(/\/+$/, "");
+}
+
 function parseLoadedSamplePosts(samplePosts: string[] | undefined): string[] {
   if (!samplePosts?.length) return [""];
   const pieces: string[] = [];
@@ -513,6 +531,93 @@ function VoiceRow({
   );
 }
 
+function SourceSuggestionsPanel({
+  topicId,
+  state,
+  onToggle,
+  onApply,
+  onDismiss,
+}: {
+  topicId: string;
+  state: SourceSuggestionState;
+  onToggle: (url: string) => void;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  void topicId;
+  if (state.kind === "loading") {
+    return (
+      <div className="mt-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3 text-[12px] text-[#6B7280]">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Looking up sources...
+        </div>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div className="mt-2 rounded-md border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12px] text-[#991B1B]">
+        <div className="flex items-start justify-between gap-3">
+          <span>{state.message}</span>
+          <button onClick={onDismiss} className="text-[#991B1B] hover:opacity-70">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+  const selectedCount = state.candidates.filter((c) => state.selected[c.url]).length;
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-medium text-[#111827]">
+          Suggested sources ({state.candidates.length})
+        </span>
+        {state.stats ? (
+          <span className="text-[11px] text-[#9CA3AF]">
+            {state.stats.validated}/{state.stats.requested} validated
+          </span>
+        ) : null}
+      </div>
+      <div className="space-y-1.5">
+        {state.candidates.map((c) => (
+          <label key={c.url} className="flex items-start gap-2 text-[12px] text-[#374151]">
+            <input
+              type="checkbox"
+              checked={Boolean(state.selected[c.url])}
+              onChange={() => onToggle(c.url)}
+              className="mt-0.5"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="font-medium text-[#111827]">{c.name}</span>
+                <span className="truncate text-[11px] text-[#6B7280]">{c.url}</span>
+              </div>
+              {c.why ? <p className="text-[11px] text-[#6B7280]">{c.why}</p> : null}
+            </div>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          onClick={onDismiss}
+          className="h-7 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#6B7280] hover:bg-[#F3F4F6]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onApply}
+          disabled={selectedCount === 0}
+          className="h-7 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
+        >
+          Add {selectedCount > 0 ? `${selectedCount} ` : ""}selected
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsClient({ subscription }: { subscription: SettingsSubscriptionSnapshot }) {
   const [rawDescription, setRawDescription] = useState("");
   const [personalContext, setPersonalContext] = useState("");
@@ -559,6 +664,7 @@ export default function SettingsClient({ subscription }: { subscription: Setting
   const [savingTellSettings, setSavingTellSettings] = useState(false);
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [suggestingTopicIndex, setSuggestingTopicIndex] = useState<number | null>(null);
+  const [sourceSuggestions, setSourceSuggestions] = useState<Record<string, SourceSuggestionState>>({});
   const [activeSection, setActiveSection] = useState<
     "voice" | "topics" | "scheduling" | "linkedin" | "billing" | "account"
   >("voice");
@@ -760,6 +866,102 @@ export default function SettingsClient({ subscription }: { subscription: Setting
     const data = await response.json().catch(() => ({}));
     console.log("PATCH /api/topics response", { ok: response.ok, status: response.status, data });
     return { response, data };
+  }
+
+  async function triggerSourceSuggestions(topicIndex: number) {
+    const topic = topics[topicIndex];
+    if (!topic?.id) return;
+    const topicId = topic.id;
+    setSourceSuggestions((prev) => ({ ...prev, [topicId]: { kind: "loading" } }));
+    try {
+      const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/suggest-sources`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        setSourceSuggestions((prev) => ({
+          ...prev,
+          [topicId]: { kind: "error", message: "Could not fetch suggestions." },
+        }));
+        return;
+      }
+      const data = (await response.json()) as {
+        candidates?: SuggestedSourceCandidate[];
+        stats?: { requested: number; validated: number };
+      };
+      const candidates = data.candidates ?? [];
+      if (candidates.length === 0) {
+        setSourceSuggestions((prev) => ({
+          ...prev,
+          [topicId]: {
+            kind: "error",
+            message: "No high-confidence sources found. Try adjusting the topic label or adding URLs manually.",
+          },
+        }));
+        return;
+      }
+      const selected: Record<string, boolean> = {};
+      for (const c of candidates) selected[c.url] = true;
+      setSourceSuggestions((prev) => ({
+        ...prev,
+        [topicId]: { kind: "results", candidates, selected, stats: data.stats },
+      }));
+    } catch {
+      setSourceSuggestions((prev) => ({
+        ...prev,
+        [topicId]: { kind: "error", message: "Could not fetch suggestions." },
+      }));
+    }
+  }
+
+  function toggleSourceCandidate(topicId: string, url: string) {
+    setSourceSuggestions((prev) => {
+      const state = prev[topicId];
+      if (!state || state.kind !== "results") return prev;
+      return {
+        ...prev,
+        [topicId]: { ...state, selected: { ...state.selected, [url]: !state.selected[url] } },
+      };
+    });
+  }
+
+  function dismissSourceSuggestions(topicId: string) {
+    setSourceSuggestions((prev) => {
+      const next = { ...prev };
+      delete next[topicId];
+      return next;
+    });
+  }
+
+  async function applySourceSuggestions(topicIndex: number) {
+    const topic = topics[topicIndex];
+    if (!topic?.id) return;
+    const topicId = topic.id;
+    const state = sourceSuggestions[topicId];
+    if (!state || state.kind !== "results") return;
+
+    const existing = new Set(topic.sourceUrls.map(normaliseSourceUrlForCompare));
+    const additions: string[] = [];
+    for (const c of state.candidates) {
+      if (!state.selected[c.url]) continue;
+      const norm = normaliseSourceUrlForCompare(c.url);
+      if (existing.has(norm)) continue;
+      existing.add(norm);
+      additions.push(c.url);
+    }
+    if (additions.length === 0) {
+      dismissSourceSuggestions(topicId);
+      return;
+    }
+
+    const merged = [...topic.sourceUrls, ...additions];
+    const { response } = await patchTopicById(topicId, { sourceUrls: merged });
+    if (!response.ok) {
+      showToast("Failed to add sources", "error");
+      return;
+    }
+    setTopics((prev) => prev.map((row, i) => (i === topicIndex ? { ...row, sourceUrls: merged } : row)));
+    dismissSourceSuggestions(topicId);
+    showToast(`${additions.length} source${additions.length === 1 ? "" : "s"} added`, "success");
   }
 
   async function saveTopicRow(index: number): Promise<boolean> {
@@ -1645,6 +1847,25 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                         className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[13px]"
                       />
                       <p className="text-[11px] text-[#9CA3AF]">RSS feeds or blogs, comma separated</p>
+                      {AUTO_SUGGEST_SOURCES_ENABLED && topic.id && topic.sourceUrls.length === 0 && !sourceSuggestions[topic.id] ? (
+                        <button
+                          type="button"
+                          onClick={() => triggerSourceSuggestions(i)}
+                          className="mt-1 inline-flex h-7 items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[12px] text-[#2563EB] transition-colors hover:bg-[#EFF6FF]"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          Suggest sources
+                        </button>
+                      ) : null}
+                      {topic.id && sourceSuggestions[topic.id] ? (
+                        <SourceSuggestionsPanel
+                          topicId={topic.id}
+                          state={sourceSuggestions[topic.id]}
+                          onToggle={(url) => toggleSourceCandidate(topic.id!, url)}
+                          onApply={() => applySourceSuggestions(i)}
+                          onDismiss={() => dismissSourceSuggestions(topic.id!)}
+                        />
+                      ) : null}
                     </div>
                   </div>
 

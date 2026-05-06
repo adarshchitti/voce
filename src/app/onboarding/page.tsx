@@ -35,8 +35,110 @@ type TopicRow = {
   querySuggested?: boolean;
 };
 
+type SuggestedSourceCandidate = { url: string; name: string; why: string };
+
+type SourceSuggestionState =
+  | { kind: "loading" }
+  | {
+      kind: "results";
+      candidates: SuggestedSourceCandidate[];
+      selected: Record<string, boolean>;
+      stats?: { requested: number; validated: number };
+    }
+  | { kind: "error"; message: string };
+
+const AUTO_SUGGEST_SOURCES_ENABLED = process.env.NEXT_PUBLIC_AUTO_SUGGEST_SOURCES === "true";
+
+function normaliseSourceUrlForCompare(u: string): string {
+  return u.trim().toLowerCase().replace(/\/+$/, "");
+}
+
 function normalizeTime(time: string) {
   return time?.slice(0, 5) ?? "09:00";
+}
+
+function OnboardingSuggestionsPanel({
+  state,
+  onToggle,
+  onApply,
+  onDismiss,
+}: {
+  state: SourceSuggestionState;
+  onToggle: (url: string) => void;
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  if (state.kind === "loading") {
+    return (
+      <div className="mt-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3 text-[12px] text-[#6B7280]">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Looking up sources...
+        </div>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div className="mt-2 rounded-md border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12px] text-[#991B1B]">
+        <div className="flex items-start justify-between gap-3">
+          <span>{state.message}</span>
+          <button onClick={onDismiss} className="text-[#991B1B] hover:opacity-70">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+  const selectedCount = state.candidates.filter((c) => state.selected[c.url]).length;
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-medium text-[#111827]">
+          Suggested sources ({state.candidates.length})
+        </span>
+        {state.stats ? (
+          <span className="text-[11px] text-[#9CA3AF]">
+            {state.stats.validated}/{state.stats.requested} validated
+          </span>
+        ) : null}
+      </div>
+      <div className="space-y-1.5">
+        {state.candidates.map((c) => (
+          <label key={c.url} className="flex items-start gap-2 text-[12px] text-[#374151]">
+            <input
+              type="checkbox"
+              checked={Boolean(state.selected[c.url])}
+              onChange={() => onToggle(c.url)}
+              className="mt-0.5"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="font-medium text-[#111827]">{c.name}</span>
+                <span className="truncate text-[11px] text-[#6B7280]">{c.url}</span>
+              </div>
+              {c.why ? <p className="text-[11px] text-[#6B7280]">{c.why}</p> : null}
+            </div>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          onClick={onDismiss}
+          className="h-7 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#6B7280] hover:bg-[#F3F4F6]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onApply}
+          disabled={selectedCount === 0}
+          className="h-7 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
+        >
+          Add {selectedCount > 0 ? `${selectedCount} ` : ""}selected
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function OnboardingPageInner() {
@@ -58,6 +160,8 @@ function OnboardingPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestingTopic, setSuggestingTopic] = useState<number | null>(null);
+  const [sourceSuggestions, setSourceSuggestions] = useState<Record<string, SourceSuggestionState>>({});
+  const [awaitingSourceSuggestions, setAwaitingSourceSuggestions] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Analysing your writing style...");
   const [draftStatus, setDraftStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [draftPreview, setDraftPreview] = useState("");
@@ -68,6 +172,60 @@ function OnboardingPageInner() {
 
   function goToStep(step: number) {
     router.push(`/onboarding?step=${step + 1}`);
+  }
+
+  function toggleSourceCandidate(topicId: string, url: string) {
+    setSourceSuggestions((prev) => {
+      const state = prev[topicId];
+      if (!state || state.kind !== "results") return prev;
+      return {
+        ...prev,
+        [topicId]: { ...state, selected: { ...state.selected, [url]: !state.selected[url] } },
+      };
+    });
+  }
+
+  function dismissSourceSuggestions(topicId: string) {
+    setSourceSuggestions((prev) => {
+      const next = { ...prev };
+      delete next[topicId];
+      return next;
+    });
+  }
+
+  async function applySourceSuggestions(topicIndex: number) {
+    const topic = topics[topicIndex];
+    if (!topic?.id) return;
+    const topicId = topic.id;
+    const state = sourceSuggestions[topicId];
+    if (!state || state.kind !== "results") return;
+
+    const existing = new Set(topic.sourceUrls.map(normaliseSourceUrlForCompare));
+    const additions: string[] = [];
+    for (const c of state.candidates) {
+      if (!state.selected[c.url]) continue;
+      const norm = normaliseSourceUrlForCompare(c.url);
+      if (existing.has(norm)) continue;
+      existing.add(norm);
+      additions.push(c.url);
+    }
+    if (additions.length === 0) {
+      dismissSourceSuggestions(topicId);
+      return;
+    }
+
+    const merged = [...topic.sourceUrls, ...additions];
+    const res = await fetch(`/api/topics?id=${encodeURIComponent(topicId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceUrls: merged }),
+    });
+    if (!res.ok) {
+      setError("Could not add sources. Please try again.");
+      return;
+    }
+    setTopics((prev) => prev.map((row, i) => (i === topicIndex ? { ...row, sourceUrls: merged } : row)));
+    dismissSourceSuggestions(topicId);
   }
 
   async function markOnboardingComplete() {
@@ -166,14 +324,24 @@ function OnboardingPageInner() {
     }
 
     if (currentStep === 1) {
-      const validTopics = topics.filter((topic) => topic.topicLabel.trim() && topic.tavilyQuery.trim());
-      if (validTopics.length === 0) {
+      // Second click after suggestions are visible — just advance.
+      if (awaitingSourceSuggestions) {
+        goToStep(2);
+        return;
+      }
+
+      const validIndices = topics
+        .map((topic, index) => ({ topic, index }))
+        .filter((entry) => entry.topic.topicLabel.trim() && entry.topic.tavilyQuery.trim());
+      if (validIndices.length === 0) {
         setError("Add at least one topic to continue.");
         return;
       }
       setLoading(true);
       try {
-        for (const topic of validTopics) {
+        const savedTopics: Array<{ index: number; id: string; sourceUrls: string[] }> = [];
+        for (const entry of validIndices) {
+          const topic = entry.topic;
           if (topic.id) {
             await fetch(`/api/topics?id=${encodeURIComponent(topic.id)}`, {
               method: "PATCH",
@@ -185,8 +353,9 @@ function OnboardingPageInner() {
                 priorityWeight: topic.priorityWeight,
               }),
             });
+            savedTopics.push({ index: entry.index, id: topic.id, sourceUrls: topic.sourceUrls });
           } else {
-            await fetch("/api/topics", {
+            const res = await fetch("/api/topics", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -196,9 +365,75 @@ function OnboardingPageInner() {
                 priorityWeight: topic.priorityWeight,
               }),
             });
+            const data = (await res.json().catch(() => ({}))) as { topic?: { id?: string } };
+            const newId = data.topic?.id;
+            if (newId) {
+              savedTopics.push({ index: entry.index, id: newId, sourceUrls: topic.sourceUrls });
+              setTopics((prev) => prev.map((row, i) => (i === entry.index ? { ...row, id: newId } : row)));
+            }
           }
         }
-        goToStep(2);
+
+        if (!AUTO_SUGGEST_SOURCES_ENABLED) {
+          goToStep(2);
+          return;
+        }
+
+        const eligible = savedTopics.filter((t) => t.sourceUrls.length === 0);
+        if (eligible.length === 0) {
+          goToStep(2);
+          return;
+        }
+
+        // Mark each eligible topic as loading and fire suggestions in parallel.
+        setSourceSuggestions((prev) => {
+          const next = { ...prev };
+          for (const t of eligible) next[t.id] = { kind: "loading" };
+          return next;
+        });
+        const fetched = await Promise.all(
+          eligible.map(async (t) => {
+            try {
+              const res = await fetch(`/api/topics/${encodeURIComponent(t.id)}/suggest-sources`, {
+                method: "POST",
+              });
+              if (!res.ok) return { id: t.id, ok: false as const };
+              const data = (await res.json()) as {
+                candidates?: SuggestedSourceCandidate[];
+                stats?: { requested: number; validated: number };
+              };
+              return { id: t.id, ok: true as const, candidates: data.candidates ?? [], stats: data.stats };
+            } catch {
+              return { id: t.id, ok: false as const };
+            }
+          }),
+        );
+
+        let anyResults = false;
+        setSourceSuggestions((prev) => {
+          const next = { ...prev };
+          for (const f of fetched) {
+            if (!f.ok) {
+              delete next[f.id];
+              continue;
+            }
+            if (f.candidates.length === 0) {
+              delete next[f.id];
+              continue;
+            }
+            const selected: Record<string, boolean> = {};
+            for (const c of f.candidates) selected[c.url] = true;
+            next[f.id] = { kind: "results", candidates: f.candidates, selected, stats: f.stats };
+            anyResults = true;
+          }
+          return next;
+        });
+
+        if (anyResults) {
+          setAwaitingSourceSuggestions(true);
+        } else {
+          goToStep(2);
+        }
       } catch {
         setError("Could not save topics. Please try again.");
       } finally {
@@ -389,8 +624,21 @@ function OnboardingPageInner() {
                       </button>
                     </div>
                     {topic.querySuggested ? <p className="text-[11px] text-[#D97706]">AI suggested - edit if needed</p> : null}
+                    {topic.id && sourceSuggestions[topic.id] ? (
+                      <OnboardingSuggestionsPanel
+                        state={sourceSuggestions[topic.id]}
+                        onToggle={(url) => toggleSourceCandidate(topic.id!, url)}
+                        onApply={() => applySourceSuggestions(index)}
+                        onDismiss={() => dismissSourceSuggestions(topic.id!)}
+                      />
+                    ) : null}
                   </div>
                 ))}
+                {awaitingSourceSuggestions ? (
+                  <p className="text-[12px] text-[#6B7280]">
+                    Pick the sources you want to follow, or click Continue to skip.
+                  </p>
+                ) : null}
                 {topics.length < 5 ? (
                   <button
                     onClick={() => setTopics((prev) => [...prev, { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3 }])}
