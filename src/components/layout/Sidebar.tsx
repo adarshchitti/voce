@@ -127,12 +127,18 @@ export default function Sidebar({ mobileOnly = false }: { mobileOnly?: boolean }
         </Button>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger>
-              <Button variant="ghost" className="h-auto w-full cursor-not-allowed justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-normal text-[#6B7280] opacity-60" disabled>
-                <Calendar className="h-[15px] w-[15px] text-[#6B7280]" />
-                Calendar
-                <span className="ml-auto text-[11px] text-[#9CA3AF]">soon</span>
-              </Button>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  className="h-auto w-full cursor-not-allowed justify-start gap-2.5 rounded-md px-2.5 py-1.5 text-[13.5px] font-normal text-[#6B7280] opacity-60"
+                  disabled
+                />
+              }
+            >
+              <Calendar className="h-[15px] w-[15px] text-[#6B7280]" />
+              Calendar
+              <span className="ml-auto text-[11px] text-[#9CA3AF]">soon</span>
             </TooltipTrigger>
             <TooltipContent>Coming in a future update</TooltipContent>
           </Tooltip>
