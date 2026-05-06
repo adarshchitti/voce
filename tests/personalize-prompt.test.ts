@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PERSONAL_ANGLE_BLOCK_HEADING,
   buildPersonalAngleInstruction,
-} from "@/app/api/drafts/[id]/personalize/route";
+} from "@/lib/ai/personal-angle";
 
 describe("personalize prompt — PERSONAL ANGLE block", () => {
   it("exposes a stable heading marker", () => {
