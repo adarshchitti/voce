@@ -39,6 +39,7 @@ export const topicSubscriptions = pgTable("topic_subscriptions", {
   sourceUrls: text("source_urls").array().default(sql`'{}'`),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   // Phase 2 observability: per-topic Tavily fetch outcome
   // status: null (never fetched) | 'success' | 'tavily_error' | 'no_results'
   lastResearchFetchAt: timestamp("last_research_fetch_at", { withTimezone: true }),
@@ -109,7 +110,7 @@ export const draftQueue = pgTable("draft_queue", {
   structureTemplateId: text("structure_template_id"),
   // which of the 5 structure templates was used — see src/lib/ai/structure-templates.ts
   source: text("source").notNull().default("cron"),
-  // 'cron' | 'quick_generate' | 'onboarding'
+  // 'cron' | 'quick_generate' | 'manual_one' | 'regeneration' | 'project_generate' | 'onboarding'
 });
 
 export const regenerationHistory = pgTable("regeneration_history", {

@@ -138,6 +138,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         voiceScore,
         aiTellFlags: buildAiTellFlagsJson(scanResult, voiceResult?.flags),
         status: "pending",
+        source: "regeneration",
         regenerationCount: nextSequence,
         staleAfter: original.staleAfter,
         structureTemplateId: structureTemplate.id,

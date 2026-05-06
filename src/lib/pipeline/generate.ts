@@ -16,6 +16,7 @@ import { selectStructureTemplate } from "@/lib/ai/structure-templates";
 import type { RuleContext } from "@/lib/ai/quality-rules";
 import { runFactCheckOrSkip, scanDraftForAITells, serializeAiTellFlags } from "@/lib/ai/scan-draft";
 import type { FactCheckOutcome } from "@/lib/ai/fact-check";
+import { scoreResearchItem } from "@/lib/ai/score-research";
 import { scoreVoice } from "@/lib/ai/score-voice";
 import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
 import { getSubscriptionStatus } from "@/lib/subscription";
@@ -239,7 +240,9 @@ async function persistUserCronFailure(userId: string, error: unknown): Promise<v
     .update(userSettings)
     .set({ lastCronStatus: "failed", lastCronAt: new Date() })
     .where(eq(userSettings.userId, userId))
-    .catch(() => undefined);
+    .catch((err) => {
+      console.error("Failed to persist last_cron_status (failed) for user:", userId, err);
+    });
   await db
     .insert(cronRuns)
     .values({
@@ -248,7 +251,9 @@ async function persistUserCronFailure(userId: string, error: unknown): Promise<v
       errorCount: 1,
       success: false,
     })
-    .catch(() => undefined);
+    .catch((err) => {
+      console.error("Failed to log per-user cron failure for user:", userId, err);
+    });
 }
 
 type PerTopicOutcome = {
@@ -347,40 +352,124 @@ async function runPerUserTavilyFlowForUser(input: {
 
   // 2. Build the candidate list from successful Tavily results, persisting
   //    each into research_items so the draft_queue.research_item_id FK resolves.
+  //    Score originality on insert (or backfill on existing unscored rows) so
+  //    the ranker has a real signal — without this, fresh items default to
+  //    originality=0.5 and high-weight topics lose by epsilon.
   const candidates: PerUserCandidate[] = [];
+  const userTopicsList = topics.map((t) => t.topicLabel).join(", ");
   for (const outcome of perTopicOutcomes) {
     if (outcome.status !== "success") continue;
     const topic = outcome.topic;
     for (const tavilyItem of outcome.items) {
-      await db
-        .insert(researchItems)
-        .values({
-          url: tavilyItem.url,
-          title: tavilyItem.title,
-          summary: tavilyItem.summary,
-          sourceType: tavilyItem.sourceType,
-          publishedAt: tavilyItem.publishedAt,
-          dedupHash: tavilyItem.dedupHash,
-        })
-        .onConflictDoNothing({ target: researchItems.url });
-      const [persisted] = await db
+      const [existing] = await db
         .select()
         .from(researchItems)
         .where(eq(researchItems.url, tavilyItem.url))
         .limit(1);
-      if (!persisted) continue;
+
+      let researchItemId: string;
+      let originality: number;
+      let title: string;
+      let summary: string | null;
+      let sourceType: string;
+      let publishedAt: Date | null;
+      let url: string;
+
+      if (existing && existing.originalityScore != null) {
+        // Already scored by a prior cron run — reuse it.
+        researchItemId = existing.id;
+        originality = Number(existing.originalityScore);
+        title = existing.title;
+        summary = existing.summary;
+        sourceType = existing.sourceType;
+        publishedAt = existing.publishedAt;
+        url = existing.url;
+      } else {
+        let score: { relevance: number; originality: number };
+        try {
+          score = await scoreResearchItem({
+            topicsList: userTopicsList,
+            title: tavilyItem.title,
+            summary: tavilyItem.summary,
+            publishedAt: tavilyItem.publishedAt?.toISOString() ?? "unknown",
+          });
+        } catch (err) {
+          console.error(
+            `[per_user_tavily] scoreResearchItem failed for ${tavilyItem.url}:`,
+            err instanceof Error ? err.message : String(err),
+          );
+          // Fall through with defaults rather than skip the item entirely —
+          // a 0.5 candidate is still better than no candidate for the topic.
+          score = { relevance: 0.5, originality: 0.5 };
+        }
+
+        if (existing) {
+          // Row exists without scores (likely inserted by an earlier per-user
+          // run before this fix). Backfill in place.
+          await db
+            .update(researchItems)
+            .set({
+              relevanceScore: String(score.relevance),
+              originalityScore: String(score.originality),
+            })
+            .where(eq(researchItems.id, existing.id))
+            .catch((err) => {
+              console.error(
+                `[per_user_tavily] backfill score update failed for ${existing.id}:`,
+                err,
+              );
+            });
+          researchItemId = existing.id;
+          title = existing.title;
+          summary = existing.summary;
+          sourceType = existing.sourceType;
+          publishedAt = existing.publishedAt;
+          url = existing.url;
+        } else {
+          // Brand-new URL — insert with scores. onConflictDoNothing guards
+          // against a race with the global research cron landing the same
+          // url between the select above and this insert.
+          await db
+            .insert(researchItems)
+            .values({
+              url: tavilyItem.url,
+              title: tavilyItem.title,
+              summary: tavilyItem.summary,
+              sourceType: tavilyItem.sourceType,
+              publishedAt: tavilyItem.publishedAt,
+              dedupHash: tavilyItem.dedupHash,
+              relevanceScore: String(score.relevance),
+              originalityScore: String(score.originality),
+            })
+            .onConflictDoNothing({ target: researchItems.url });
+          const [persisted] = await db
+            .select()
+            .from(researchItems)
+            .where(eq(researchItems.url, tavilyItem.url))
+            .limit(1);
+          if (!persisted) continue;
+          researchItemId = persisted.id;
+          title = persisted.title;
+          summary = persisted.summary;
+          sourceType = persisted.sourceType;
+          publishedAt = persisted.publishedAt;
+          url = persisted.url;
+        }
+        originality = score.originality;
+      }
+
       candidates.push({
-        researchItemId: persisted.id,
+        researchItemId,
         sourceTopicId: topic.id,
         sourceTopicLabel: topic.topicLabel,
         userTopicWeight: topic.priorityWeight ?? 3,
-        originality: persisted.originalityScore != null ? Number(persisted.originalityScore) : 0.5,
+        originality,
         source: "tavily",
-        url: persisted.url,
-        title: persisted.title,
-        summary: persisted.summary,
-        sourceType: persisted.sourceType,
-        publishedAt: persisted.publishedAt,
+        url,
+        title,
+        summary,
+        sourceType,
+        publishedAt,
       });
     }
   }
@@ -633,7 +722,9 @@ export async function runGeneratePipelineForUser(userId: string): Promise<Genera
     .from(draftQueue)
     .where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "pending")));
   if (pendingCount.value >= settings.draftsPerDay) {
-    return emptyResult(userId, "pending_limit_reached");
+    const skipped = emptyResult(userId, "pending_limit_reached");
+    await persistUserCronResult(skipped);
+    return skipped;
   }
 
   // Phase 2 dispatch. global_pool keeps the Phase 1 flow untouched below.

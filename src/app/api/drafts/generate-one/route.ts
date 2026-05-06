@@ -190,6 +190,7 @@ export async function POST() {
         voiceScore,
         aiTellFlags: serializeAiTellFlags(scanResult),
         status: "pending",
+        source: "manual_one",
         staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),
         structureTemplateId: structureTemplate.id,
       })

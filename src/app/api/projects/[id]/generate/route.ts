@@ -326,6 +326,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         sourceUrls: [topResearch.url],
         aiTellFlags: serializeAiTellFlags(scanResult),
         status: "pending",
+        source: "project_generate",
         seriesId: projectId,
         seriesPosition,
         staleAfter: new Date(Date.now() + (isRecentNews ? 72 : 24 * 7) * 60 * 60 * 1000),

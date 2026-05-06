@@ -68,6 +68,7 @@ export async function PATCH(request: Request) {
     if (body.tavilyQuery !== undefined) updateValues.tavilyQuery = sanitiseTavilyQuery(body.tavilyQuery);
     if (body.sourceUrls !== undefined) updateValues.sourceUrls = body.sourceUrls;
     if (body.priorityWeight !== undefined) updateValues.priorityWeight = body.priorityWeight;
+    updateValues.updatedAt = new Date();
 
     const [topic] = await db
       .update(topicSubscriptions)
