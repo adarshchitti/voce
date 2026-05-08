@@ -1,12 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, posts, researchItems, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getSubscriptionStatus } from "@/lib/subscription";
 import { calculateScheduledAt } from "@/lib/scheduler";
-import type { publishPostTask } from "@/trigger/publish";
 
 function inferStructure(text: string): string {
   if (text.match(/^\d+\./m)) return "numbered_list";
@@ -91,68 +89,70 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         preferredDays: settings.preferredDays,
       });
 
-    await db.update(draftQueue).set({ status: "approved", scheduledFor: scheduledAt }).where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
-    const [createdPost] = await db
-      .insert(posts)
-      .values({
-        userId,
-        draftId: id,
-        contentSnapshot: draft.editedText ?? draft.draftText,
-        status: "scheduled",
-        scheduledAt,
-      })
-      .returning({ id: posts.id });
-
-    await tasks.trigger<typeof publishPostTask>(
-      "publish-post",
-      {
-        postId: createdPost.id,
-        userId,
-      },
-      {
-        delay: scheduledAt,
-      },
-    );
-
-    let editDepthPct = 0;
-    let editDiffSummary: string | null = null;
-    if (draft.editedText && draft.editedText !== draft.draftText) {
-      const originalWords = Math.max(1, draft.draftText.split(/\s+/).filter(Boolean).length);
-      const editedWords = draft.editedText.split(/\s+/).filter(Boolean).length;
-      const changedWords = Math.abs(originalWords - editedWords);
-      editDepthPct = Math.min(100, Math.round((changedWords / originalWords) * 100));
-      if (editDepthPct > 20) {
-        editDiffSummary = await generateEditDiffSummary(draft.draftText, draft.editedText);
-      }
-    }
-
-    const researchItem = draft.researchItemId
-      ? await db.query.researchItems.findFirst({ where: eq(researchItems.id, draft.researchItemId) })
-      : null;
-
-    await db.insert(draftMemories).values({
-      userId: draft.userId,
-      draftId: draft.id,
-      topicCluster: researchItem?.sourceType ?? null,
-      structureUsed: inferStructure(draft.draftText),
-      approved: true,
-      hookFirstLine: draft.draftText.split("\n")[0]?.slice(0, 200) ?? "",
-      wordCount: (draft.editedText ?? draft.draftText).split(/\s+/).filter(Boolean).length,
-      editDiffSummary,
-      editDepthPct,
+    const createdPost = await db.transaction(async (tx) => {
+      await tx
+        .update(draftQueue)
+        .set({ status: "approved", scheduledFor: scheduledAt })
+        .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
+      const [post] = await tx
+        .insert(posts)
+        .values({
+          userId,
+          draftId: id,
+          contentSnapshot: draft.editedText ?? draft.draftText,
+          status: "scheduled",
+          scheduledAt,
+        })
+        .returning({ id: posts.id });
+      return post;
     });
 
-    if (draft.seriesId) {
-      const summary = await generateSeriesContextSummary(draft.editedText ?? draft.draftText);
-      if (summary) {
-        await db
-          .update(draftQueue)
-          .set({ seriesContext: summary })
-          .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
-        // TODO(stage2-followup): also persist summary to posts.series_context once schema includes that column.
+    // Memory writes are quality-of-life for future generation. They must not
+    // abort approval — the user's contract (post scheduled) is already met.
+    try {
+      let editDepthPct = 0;
+      let editDiffSummary: string | null = null;
+      if (draft.editedText && draft.editedText !== draft.draftText) {
+        const originalWords = Math.max(1, draft.draftText.split(/\s+/).filter(Boolean).length);
+        const editedWords = draft.editedText.split(/\s+/).filter(Boolean).length;
+        const changedWords = Math.abs(originalWords - editedWords);
+        editDepthPct = Math.min(100, Math.round((changedWords / originalWords) * 100));
+        if (editDepthPct > 20) {
+          editDiffSummary = await generateEditDiffSummary(draft.draftText, draft.editedText);
+        }
       }
+
+      const researchItem = draft.researchItemId
+        ? await db.query.researchItems.findFirst({ where: eq(researchItems.id, draft.researchItemId) })
+        : null;
+
+      await db.insert(draftMemories).values({
+        userId: draft.userId,
+        draftId: draft.id,
+        topicCluster: researchItem?.sourceType ?? null,
+        structureUsed: inferStructure(draft.draftText),
+        approved: true,
+        hookFirstLine: draft.draftText.split("\n")[0]?.slice(0, 200) ?? "",
+        wordCount: (draft.editedText ?? draft.draftText).split(/\s+/).filter(Boolean).length,
+        editDiffSummary,
+        editDepthPct,
+      });
+
+      if (draft.seriesId) {
+        const summary = await generateSeriesContextSummary(draft.editedText ?? draft.draftText);
+        if (summary) {
+          await db
+            .update(draftQueue)
+            .set({ seriesContext: summary })
+            .where(and(eq(draftQueue.id, id), eq(draftQueue.userId, userId)));
+          // TODO(stage2-followup): also persist summary to posts.series_context once schema includes that column.
+        }
+      }
+    } catch (memoryError) {
+      console.error(`Approve memory writes failed for post ${createdPost.id}:`, memoryError);
     }
-    return Response.json({ scheduledAt: scheduledAt.toISOString() });
+
+    return Response.json({ scheduledAt: scheduledAt.toISOString(), postId: createdPost.id });
   } catch (error) {
     console.error('Approve error:', error)
     return Response.json({ 

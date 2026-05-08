@@ -160,6 +160,8 @@ export const posts = pgTable("posts", {
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0),
 });
 
 export const voiceProfiles = pgTable("voice_profiles", {

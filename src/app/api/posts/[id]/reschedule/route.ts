@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { posts } from "@/lib/db/schema";
-import type { publishPostTask } from "@/trigger/publish";
 
 export async function PATCH(
   request: Request,
@@ -42,12 +40,6 @@ export async function PATCH(
     .update(posts)
     .set({ scheduledAt: newScheduledAt })
     .where(eq(posts.id, id));
-
-  await tasks.trigger<typeof publishPostTask>(
-    "publish-post",
-    { postId: id, userId },
-    { delay: newScheduledAt },
-  );
 
   return Response.json({ success: true, scheduledAt: newScheduledAt.toISOString() });
 }

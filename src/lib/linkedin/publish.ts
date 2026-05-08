@@ -5,12 +5,16 @@ export async function publishToLinkedIn({
   accessToken,
   personUrn,
   text,
+  idempotencyKey,
   articleUrl,
   articleTitle,
 }: {
   accessToken: string
   personUrn: string
   text: string
+  // Stable per-logical-post key forwarded as `LinkedIn-Idempotency-Key`. With
+  // posts.id as the key, retries of the same row will not create duplicates.
+  idempotencyKey: string
   articleUrl?: string | null
   articleTitle?: string | null
 }): Promise<{ success: true; postId: string } | { success: false; error: string }> {
@@ -40,6 +44,7 @@ export async function publishToLinkedIn({
       "Content-Type": "application/json",
       "LinkedIn-Version": LINKEDIN_API_VERSION,
       "X-Restli-Protocol-Version": "2.0.0",
+      "LinkedIn-Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify(postBody),
   });

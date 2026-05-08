@@ -1,7 +1,7 @@
 # PROJECT_TRUTH.md — Voce Ground Truth
 > Auto-generated from codebase. Update this file whenever something real changes.
 > This is the file other AI sessions read first. Every line must be accurate.
-> Last updated: 2026-05-05
+> Last updated: 2026-05-07
 
 ---
 
@@ -24,7 +24,8 @@ Voce is a LinkedIn-focused AI writing assistant: it ingests research (RSS, Tavil
 | Background jobs | Trigger.dev | `@trigger.dev/sdk` **4.4.5** in package.json; task files import `@trigger.dev/sdk/v3`. `trigger.config.ts` project id: `proj_gutapfjoxgjzsbxyfgmi` |
 | Research (HTTP) | Vercel Cron | `vercel.json`: **only** `GET/POST /api/cron/research` at `0 2 * * *` |
 | Research (Trigger) | Trigger.dev schedule | `researchTask` in `src/trigger/research.ts` uses cron `0 2 * * *` |
-| Generate / publish crons | Next.js API routes | `/api/cron/generate`, `/api/cron/publish` exist with `CRON_SECRET` bearer check; **not** listed in `vercel.json` — must be scheduled externally or manually |
+| Generate cron | Next.js API route | `/api/cron/generate` exists with `CRON_SECRET` bearer check; **not** listed in `vercel.json` — invoked by Trigger.dev or manually |
+| Publish queue | Trigger.dev scheduled task | `publishSweepTask` (`*/5 * * * *`) sweeps `posts` where `status='scheduled' AND scheduled_at <= now()`. The DB row is the queue; no delayed Trigger runs. |
 | LLM | Anthropic API | Primary draft: `claude-sonnet-4-6` (`generate-draft.ts`). Haiku `claude-haiku-4-5-20251001` used in: judge-research (Phase 1 daily cron), score-voice, score-research, extract-voice (sample-post stylometry), extract-personal-context (component extraction on save), select-personal-context (per-draft selection in personalize), fact-check (post-generation source-grounding verifier). |
 | Research API | Tavily | `TAVILY_API_KEY`, `@tavily/core` |
 | LinkedIn | OAuth + REST | OAuth scope `openid profile email w_member_social`. Publish: `POST https://api.linkedin.com/rest/posts` with header `LinkedIn-Version: 202510` |
@@ -82,7 +83,7 @@ src/components/
   projects/NewProjectWizard
 
 src/trigger/
-  publish.ts            # publish-post task
+  publish.ts            # publish-sweep scheduled task (every 5 min)
   generate.ts           # generate-drafts scheduled task
   research.ts           # daily-research scheduled task
   scheduleUserGenerate.ts  # schedule-user-generate schema task
@@ -141,7 +142,7 @@ RLS is **not** defined in this repository (no SQL policies in Drizzle schema). I
 | `draft_queue` | Generated drafts | `user_id`, `draft_text`, `status`, `stale_after`, `series_id`, `ai_tell_flags`, `topic_subscription_id`, `topic_label`, `source` (`'cron'` \| `'quick_generate'` \| `'onboarding'`) | No |
 | `regeneration_history` | Regeneration audit | `user_id`, `draft_id`, instruction, before/after text | No |
 | `rejection_reasons` | Rejection taxonomy + free text | `user_id`, `draft_id`, `reason_code`, `rejection_type` | No |
-| `posts` | Scheduled/published posts | `user_id`, `draft_id`, `scheduled_at`, `status`, `linkedin_post_id` | No |
+| `posts` | Scheduled/published posts (claim-based queue) | `user_id`, `draft_id`, `scheduled_at`, `status`, `linkedin_post_id`, `claimed_at`, `attempts` | No |
 | `voice_profiles` | Voice calibration + overrides | `user_id` unique, `sample_posts`, `personal_context` (text, max 1500), **`personal_context_components` (jsonb default `[]`)**, stylometric fields, `generation_guidance` | No |
 | `draft_memories` | Approved-draft memory | `user_id`, `approved`, `structure_used`, edit stats | No |
 | `linkedin_tokens` | LinkedIn OAuth tokens | `user_id` unique, `access_token`, `person_urn`, `token_expiry`, `status` | No |
@@ -157,7 +158,6 @@ Format: `METHOD /api/path` — behavior
 
 - **GET/POST** `/api/cron/research` — Runs `runResearchPipeline` + `logResearchRun`; bearer `CRON_SECRET`.
 - **GET/POST** `/api/cron/generate` — `runGenerateForDueUsers` + `logGenerateRun`; bearer `CRON_SECRET`.
-- **GET/POST** `/api/cron/publish` — `runPublishForDueUsers` + `logPublishRun`; bearer `CRON_SECRET`.
 - **GET** `/api/cron/status` — Status helper (auth via query — read file if needed for details).
 - **DELETE** `/api/account` — Deletes user data (uses service role for Supabase user deletion per implementation).
 - **POST** `/api/account/export` — JSON export download.
@@ -172,7 +172,7 @@ Format: `METHOD /api/path` — behavior
 - **GET** `/api/drafts` — List drafts (query filters).
 - **POST** `/api/drafts/generate-one` — Generate one draft; **402** if `!canGenerate` (beta or subscription).
 - **POST** `/api/drafts/generate-quick` — On-demand quick generate from a typed topic via Tavily; **402** if `!canGenerate`; daily cap of 3 per user.
-- **POST** `/api/drafts/[id]/approve` — Approve + schedule + Trigger publish; **402** if `!canPublish`.
+- **POST** `/api/drafts/[id]/approve` — Approve + schedule. Wraps the `draft_queue` update + `posts` insert in a single `db.transaction` so neither happens without the other; the publish sweep picks up the row on its next tick. Downstream Anthropic memory writes (`draft_memories`, series-context summary) run inside an inner try/catch and never block the response. **402** if `!canPublish`.
 - **PUT** `/api/drafts/[id]/edit` — Edit draft text.
 - **POST** `/api/drafts/[id]/personalize` — Targeted personalization. Returns **400 `code: NO_PERSONAL_CONTEXT`** when both `personal_context` and `personal_context_components` are empty (see Personal Context Extraction). Otherwise returns the regenerated draft plus a `personalization` metadata object (`mode: 'targeted' | 'no_fit' | 'legacy_raw_context'`).
 - **POST** `/api/drafts/[id]/regenerate` — Regenerate; **402** if `!canGenerate`.
@@ -180,8 +180,8 @@ Format: `METHOD /api/path` — behavior
 - **GET** `/api/inbox/count` — Pending draft count.
 - **GET** `/api/posts` — List posts.
 - **PATCH** `/api/posts/[id]/metrics` — Manual metrics.
-- **POST** `/api/posts/[id]/reschedule` — Reschedule.
-- **POST** `/api/posts/[id]/retry` — Retry failed publish.
+- **POST** `/api/posts/[id]/reschedule` — Update `posts.scheduled_at`. The publish sweep picks up the new value on its next tick (no Trigger.dev call).
+- **POST** `/api/posts/[id]/retry` — Retry failed publish. Atomically claims the row (`status: failed → publishing`, `claimed_at = now()`, `attempts++`) with a conditional WHERE; returns **409** if the row isn't in `failed` state. Then calls the same `runPublishForPost` the sweep uses.
 - **POST** `/api/posts/[id]/unschedule` — Unschedule.
 - **GET** `/api/projects` — List projects.
 - **POST** `/api/projects` — Create project.
@@ -256,10 +256,76 @@ Referenced in application source (`src/`, `middleware.ts`, root `trigger.config.
 
 | File | Task id | Type | Behavior |
 |---|---|---|---|
-| `publish.ts` | `publish-post` | `schemaTask` | Payload: `postId`, `userId`. Calls `runPublishForPost`. Max duration 60s; retries 3. **Triggered from API** (e.g. after approve) with delay. |
+| `publish.ts` | `publish-sweep` | `schedules.task` | Cron `*/5 * * * *`. Runs `runPublishSweep` + `logPublishSweep`. Max 1800s; retries 2. Single global task — sweeps the queue across all users. |
 | `generate.ts` | `generate-drafts` | `schedules.task` | Payload schedule: `externalId` = `userId`. Archives stale pending drafts, runs `runGeneratePipelineForUser` (which dispatches on `daily_research_mode` — see Daily Generation Pipeline). Max 300s. |
 | `research.ts` | `daily-research` | `schedules.task` | Cron `0 2 * * *`. Runs `runResearchPipeline`, `logResearchRun`. Max 600s. |
 | `scheduleUserGenerate.ts` | `schedule-user-generate` | `schemaTask` | Creates/deletes Trigger schedule for `generate-drafts` per user timezone/cadence; `on_demand` deletes schedule. |
+
+---
+
+## Publish Queue Architecture
+
+The publish path is a **claim-based database queue**, swept every 5 minutes by a single global Trigger.dev task. The DB row is the queue; the wall clock is the signal. There are no delayed Trigger.dev runs and no per-post tasks.
+
+### Queue columns (on `posts`)
+
+- `status` — `'scheduled' | 'publishing' | 'published' | 'failed'`. `'scheduled'` is the queue.
+- `scheduled_at timestamptz` — earliest publishable time. Sweep claims rows where `scheduled_at <= now()`.
+- `claimed_at timestamptz` — set to `now()` when a sweep/retry claims the row; nulled on every terminal write.
+- `attempts integer NOT NULL DEFAULT 0` — incremented on every claim. Capped at 3 by the zombie reaper.
+- Partial index `posts_due_idx ON posts (scheduled_at) WHERE status = 'scheduled'` keeps the claim hot.
+
+### Sweep task (`src/trigger/publish.ts` → `src/lib/pipeline/publish.ts`)
+
+`publishSweepTask` runs `*/5 * * * *` and calls `runPublishSweep({ batchSize = 20, zombieTimeoutMs = 15min })`:
+
+1. **Zombie cleanup** — two raw `UPDATE`s. Rows in `'publishing'` whose `claimed_at` is older than the zombie timeout get reset to `'scheduled'` (when `attempts < 3`) or terminally failed with `failure_reason = 'exceeded retry limit (zombie)'` (when `attempts >= 3`).
+2. **Atomic claim** — single SQL statement, the industry-standard pattern (Sidekiq reliable fetch, River, Que, pgmq):
+
+   ```sql
+   UPDATE posts SET status='publishing', claimed_at=now(), attempts=attempts+1
+   WHERE id IN (
+     SELECT id FROM posts
+     WHERE status='scheduled' AND scheduled_at<=now()
+     ORDER BY scheduled_at ASC LIMIT $batchSize
+     FOR UPDATE SKIP LOCKED
+   ) RETURNING ...
+   ```
+
+3. **Per-row publish** — calls `runPublishForPost(post, userId)` for each claimed row inside a try/catch so one poison pill cannot kill the batch. Errors are collected into `result.errors`.
+4. **Telemetry** — `logPublishSweep` writes a `cron_runs` row with `phase = 'publish-sweep'` and `result = { claimed, published, failed, zombiesReset, zombiesFailed, errors }`.
+
+### `runPublishForPost(post: ClaimedPost, userId)`
+
+The publish function assumes the caller already claimed the row. Every terminal `UPDATE` is conditioned on `status='publishing'` so a stale stack frame cannot overwrite a row another worker has already moved on. Every terminal write also nulls `claimed_at`.
+
+Body order:
+
+1. Idempotency early-return — if `post.linkedinPostId` is set, return `{ success: true, alreadyPublished: true }`.
+2. Load `linkedin_tokens`. Missing/expired → `status='failed'`, `failure_reason='LinkedIn token missing/expired'`, return.
+3. Call `publishToLinkedIn({ ..., idempotencyKey: post.id })`. The LinkedIn `/rest/posts` endpoint receives a `LinkedIn-Idempotency-Key` header set to `posts.id`, so retries of the same logical post will not create duplicates upstream.
+4. Success → `status='published'`, `published_at=now()`, `linkedin_post_id=$urn`; `draft_queue.status='published'`.
+5. Failure response → `status='failed'`, `failure_reason=$result.error`.
+6. Outer try/catch → same failed update with the thrown message as `failure_reason`.
+
+### Approve route (`/api/drafts/[id]/approve`)
+
+`db.transaction` wraps the `draft_queue.status='approved'` update and the `posts` insert (`status='scheduled'`) so approval is atomic — either both happen or neither. No more orphaned `posts` rows when an Anthropic call later in the route throws. The downstream memory writes (`draft_memories`, optional series-context summary) run in an inner try/catch and never block the response.
+
+### Retry route (`/api/posts/[id]/retry`)
+
+Synchronous so the user gets immediate feedback. The route does its own atomic claim — `status: 'failed' → 'publishing'`, `claimed_at=now()`, `attempts=attempts+1` — with a conditional WHERE keyed on `status='failed'`. If the claim returns no rows, the route responds **409**. Otherwise it calls the same `runPublishForPost` the sweep uses. Single source of truth for publish logic.
+
+### Reschedule route (`/api/posts/[id]/reschedule`)
+
+Updates `posts.scheduled_at`. The sweep picks up the new value on its next tick (no Trigger.dev call). Maximum scheduling slack is 5 minutes — acceptable for the LinkedIn use case.
+
+### Known issues resolved by Option 4
+
+- **Publish status filter bug** — old `runPublishForDueUsers` filtered by user cadence; rows for users on `'on_demand'` cadence never got picked up. The sweep is global and cadence-agnostic.
+- **Orphan-on-approval bug** — approval used to do non-atomic `update` + `insert`; an Anthropic failure between the two left orphan rows. Now wrapped in `db.transaction`.
+- **Reschedule double-publish bug** — old reschedule also issued a fresh delayed `publishPostTask`; the original Trigger run was never cancelled, so a rescheduled post could publish twice. Reschedule no longer talks to Trigger; the sweep is the only invoker.
+- **Retry double-publish bug** — old retry published inline without a conditional claim; a sweep + a user retry could both fire. Both invokers now do an atomic claim with `status` guard before calling `runPublishForPost`.
 
 ---
 
@@ -578,7 +644,7 @@ Additive layer on top of the Stripe gate. Schema: `user_settings.beta_access_unt
 
 - **OAuth scope (actual):** `openid profile email w_member_social` (`buildLinkedInAuthorizeUrl` in `src/lib/linkedin/oauth.ts`).
 - **API version header (actual):** `LinkedIn-Version: 202510` on `POST /rest/posts` (`src/lib/linkedin/publish.ts`).
-- **Publish endpoint:** `POST https://api.linkedin.com/rest/posts` with JSON body: `author` (person URN), `commentary` (text), `visibility`, `distribution`, `lifecycleState: "PUBLISHED"`, etc.
+- **Publish endpoint:** `POST https://api.linkedin.com/rest/posts` with JSON body: `author` (person URN), `commentary` (text), `visibility`, `distribution`, `lifecycleState: "PUBLISHED"`, etc. Header `LinkedIn-Idempotency-Key: ${posts.id}` so retries of the same row do not create duplicates upstream.
 - **Article URL/title:** Passed into `publishToLinkedIn` but **intentionally not sent** (comment in code: reach penalty); `articleUrl` / `articleTitle` are no-ops.
 - **Person URN:** From `userinfo` `sub` → `urn:li:person:${sub}`; stored in `linkedin_tokens.person_urn`.
 - **Token expiry:** OAuth `expires_in` used when storing token; publish treats HTTP **401** as `TOKEN_EXPIRED`.
@@ -594,7 +660,7 @@ From **`vercel.json` only:**
 |---|---|
 | `/api/cron/research` | `0 2 * * *` (daily 02:00 UTC) |
 
-**Note:** `/api/cron/generate` and `/api/cron/publish` are **not** in `vercel.json`; they must be invoked by another scheduler or Trigger.dev / manual process.
+**Note:** `/api/cron/generate` is **not** in `vercel.json`; it is invoked by Trigger.dev or manually. The publish path runs as the `publishSweepTask` Trigger.dev schedule (`*/5 * * * *`) — no HTTP cron route.
 
 ---
 
@@ -618,7 +684,7 @@ From **`vercel.json` only:**
 - LinkedIn OAuth + text post publish to `/rest/posts`.
 - Stripe Checkout, webhook sync to `subscriptions`, Customer Portal.
 - Subscription gating (402) on specific write/generate routes, beta-aware.
-- Trigger.dev tasks: daily research, per-user generate schedule, on-demand publish task.
+- Trigger.dev tasks: daily research, per-user generate schedule, global 5-minute publish-sweep task (claim-based queue, FOR UPDATE SKIP LOCKED, LinkedIn idempotency key derived from `posts.id`).
 - UI pages: inbox, settings, projects, history, archive, insights, onboarding.
 - Vitest test infra: 218 unit tests across 17 files.
 - Operator scripts: `run-cron-for-user`, `probe-judge`, `grant-beta-access`, `verify-beta-gate`, `research-mode`, `backfill-personal-context-components`.

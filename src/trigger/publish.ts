@@ -1,26 +1,29 @@
-import { schemaTask } from "@trigger.dev/sdk/v3";
-import { z } from "zod";
-import { runPublishForPost } from "@/lib/pipeline/publish";
+import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { logPublishSweep, runPublishSweep } from "@/lib/pipeline/publish";
 
-export const publishPostTask = schemaTask({
-  id: "publish-post",
-  schema: z.object({
-    postId: z.string(),
-    userId: z.string(),
-  }),
-  maxDuration: 60,
+export const publishSweepTask = schedules.task({
+  id: "publish-sweep",
+  cron: "*/5 * * * *",
+  maxDuration: 1800,
   retry: {
-    maxAttempts: 3,
-    minTimeoutInMs: 5000,
-    maxTimeoutInMs: 30000,
-    factor: 2,
+    maxAttempts: 2,
   },
-  run: async ({ postId, userId }) => {
-    const result = await runPublishForPost(postId, userId);
+  run: async () => {
+    const startTime = Date.now();
+    const result = await runPublishSweep();
+    await logPublishSweep(startTime, result);
+
+    logger.log("publish-sweep complete", {
+      claimed: result.claimed,
+      published: result.published,
+      failed: result.failed,
+      zombiesReset: result.zombiesReset,
+      zombiesFailed: result.zombiesFailed,
+      errorCount: result.errors.length,
+    });
 
     return {
-      phase: "publish",
-      userId,
+      phase: "publish-sweep",
       ...result,
     };
   },

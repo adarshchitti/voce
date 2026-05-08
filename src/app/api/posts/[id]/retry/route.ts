@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { posts, draftQueue, linkedinTokens } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { posts } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { publishToLinkedIn } from "@/lib/linkedin/publish";
+import { runPublishForPost, type ClaimedPost } from "@/lib/pipeline/publish";
 
 export async function POST(
   request: NextRequest,
@@ -15,67 +15,50 @@ export async function POST(
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
 
-    const post = await db
-      .select()
-      .from(posts)
-      .where(and(eq(posts.id, id), eq(posts.userId, userId)))
-      .limit(1)
-      .then((r) => r[0] ?? null);
+    const claimed = await db
+      .update(posts)
+      .set({
+        status: "publishing",
+        claimedAt: new Date(),
+        attempts: sql`${posts.attempts} + 1`,
+        failureReason: null,
+      })
+      .where(
+        and(
+          eq(posts.id, id),
+          eq(posts.userId, userId),
+          eq(posts.status, "failed"),
+        ),
+      )
+      .returning();
 
-    if (!post) {
-      return Response.json({ error: "Post not found" }, { status: 404 });
-    }
-
-    if (post.status === "published") {
-      return Response.json({ error: "Post already published" }, { status: 400 });
-    }
-
-    const token = await db.query.linkedinTokens.findFirst({
-      where: eq(linkedinTokens.userId, userId),
-    });
-
-    if (!token || token.status !== "active") {
+    if (claimed.length === 0) {
       return Response.json(
-        {
-          error: "LinkedIn token expired. Please reconnect in Settings.",
-        },
-        { status: 400 },
+        { error: "Post is not in failed state" },
+        { status: 409 },
       );
     }
 
-    // Reset to publishing state
-    await db.update(posts).set({ status: "publishing", failureReason: null }).where(eq(posts.id, id));
+    const row = claimed[0];
+    const claimedPost: ClaimedPost = {
+      id: row.id,
+      userId: row.userId,
+      draftId: row.draftId,
+      contentSnapshot: row.contentSnapshot,
+      linkedinPostId: row.linkedinPostId,
+      scheduledAt: row.scheduledAt,
+      attempts: row.attempts,
+    };
 
-    const result = await publishToLinkedIn({
-      accessToken: token.accessToken,
-      personUrn: token.personUrn,
-      text: post.contentSnapshot,
-    });
+    const result = await runPublishForPost(claimedPost, userId);
 
-    if (!result.success) {
-      await db
-        .update(posts)
-        .set({
-          status: "failed",
-          failureReason: result.error,
-        })
-        .where(eq(posts.id, id));
-      return Response.json({ error: result.error }, { status: 500 });
+    if (result.success) {
+      return Response.json({ ok: true, postId: result.postId });
     }
-
-    await db
-      .update(posts)
-      .set({
-        status: "published",
-        linkedinPostId: result.postId,
-        publishedAt: new Date(),
-        failureReason: null,
-      })
-      .where(eq(posts.id, id));
-
-    await db.update(draftQueue).set({ status: "published" }).where(eq(draftQueue.id, post.draftId));
-
-    return Response.json({ ok: true, postId: result.postId });
+    return Response.json(
+      { error: result.reason ?? "publish failed" },
+      { status: 500 },
+    );
   } catch (error) {
     console.error("Retry failed:", error);
     return Response.json(
