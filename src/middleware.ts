@@ -4,7 +4,9 @@ import { isDemo } from "@/lib/demo/mode";
 
 export async function middleware(request: NextRequest) {
   const publicPaths = ["/login", "/signup", "/auth/callback", "/api/cron/", "/api/billing/webhook", "/_design"];
-  const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
+  // "/" must be an EXACT match: startsWith("/") is true for every path and would make the whole app public.
+  const isPublic =
+    request.nextUrl.pathname === "/" || publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
 
   // Demo mode: the Supabase project is gone, so updateSession() would hang on DNS.
   // Let every route through; auth.ts supplies the synthetic user.

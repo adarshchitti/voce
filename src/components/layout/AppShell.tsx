@@ -6,7 +6,14 @@ import Sidebar from "./Sidebar";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const isAuthPage = pathname === "/login" || pathname === "/onboarding" || pathname === "/_design";
+  // Full-bleed routes: no sidebar chrome. /signup belongs here too — the demo
+  // path is landing -> Start free -> signup, and a sidebar mid-signup breaks it.
+  const isAuthPage =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/onboarding" ||
+    pathname === "/_design";
 
   if (isAuthPage) return <>{children}</>;
 
