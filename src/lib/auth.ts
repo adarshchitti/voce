@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { DEMO_USER, DEMO_USER_ID, isDemo } from "@/lib/demo/mode";
 import type { User } from "@supabase/supabase-js";
 
 type AuthenticatedUserResult =
@@ -7,6 +8,11 @@ type AuthenticatedUserResult =
   | { user: null; userId: null; unauthorized: NextResponse };
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUserResult> {
+  // Demo mode: no Supabase round-trip at all. The project is offline.
+  if (isDemo()) {
+    return { user: DEMO_USER as unknown as User, userId: DEMO_USER_ID, unauthorized: null };
+  }
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },

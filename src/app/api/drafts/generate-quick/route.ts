@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -23,6 +25,15 @@ import { buildVoicePromptSlice } from "@/lib/ai/voice-slice";
 const DAILY_LIMIT = 3;
 
 export async function POST(req: Request) {
+  if (isDemo()) {
+    const body = (await req.json().catch(() => ({}))) as { topic?: string };
+    const topic = (body.topic ?? "").trim();
+    if (topic.length < 3) return Response.json({ error: "Topic must be at least 3 characters" }, { status: 400 });
+    if (topic.length > 200) return Response.json({ error: "Topic must be under 200 characters" }, { status: 400 });
+    const result = demoDrafts.generateQuick(topic);
+    if (!result) return Response.json({ error: "Daily quick-generate limit reached", code: "QUICK_LIMIT" }, { status: 429 });
+    return Response.json(result);
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

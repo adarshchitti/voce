@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoSuggestedSources } from "@/lib/demo/suggested-sources";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { topicSubscriptions } from "@/lib/db/schema";
@@ -11,6 +13,10 @@ function flagOn(): boolean {
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    return Response.json(demoSuggestedSources(id));
+  }
   if (!flagOn()) return Response.json({ error: "Not found" }, { status: 404 });
 
   const { userId, unauthorized } = await getAuthenticatedUser();

@@ -4,24 +4,72 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   Voce design tokens — warm paper + Voce blue, neo-brutalist shape.
+   See UI_OVERHAUL_PLAN.md §1 for the rationale behind every value.
+
+   Two layers live here:
+     1. Voce tokens (--paper, --ink, --p-*, hard shadows) — authored in oklch.
+     2. A remap of shadcn's semantic vars onto layer 1, so the 8 primitives
+        that use bg-popover / border-border / text-muted-foreground inherit
+        the warm palette without being edited.
+   ============================================================ */
+
 @theme inline {
+  /* substrate + ink */
+  --color-paper: var(--paper);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-hairline: var(--hairline);
+
+  /* accent */
+  --color-accent-solid: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-tint: var(--accent-tint);
+
+  /* four data pastels — identical L and C, hue-only variation */
+  --color-p-blue: var(--p-blue);
+  --color-p-coral: var(--p-coral);
+  --color-p-lilac: var(--p-lilac);
+  --color-p-sage: var(--p-sage);
+  --color-p-amber: var(--p-amber);
+
+  /* Third-party brand colour, for the LinkedIn post preview only.
+     Not part of the Voce palette and never used for Voce UI. */
+  --color-linkedin: var(--linkedin);
+
+  /* hard, zero-blur offset shadows */
+  --shadow-card: var(--sh-card);
+  --shadow-btn: var(--sh-btn);
+  --shadow-btn-h: var(--sh-btn-h);
+  --shadow-nav: var(--sh-nav);
+  --shadow-accent: var(--sh-accent);
+  --shadow-xs: var(--sh-xs);
+
+  /* type */
+  --font-display: var(--font-archivo);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-archivo);
+
+  /* legacy aliases kept so pre-overhaul screens keep compiling */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand: var(--brand);
-  --color-brand-light: var(--brand-light);
-  --color-brand-hover: var(--brand-hover);
-  --color-surface-page: var(--surface-page);
-  --color-surface-card: var(--surface-card);
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
-  --color-border-subtle: var(--border-subtle);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --shadow-xs: var(--shadow-xs);
-  --shadow-card: var(--shadow-sm);
-  --shadow-elevated: var(--shadow-md);
+  --color-brand: var(--accent);
+  --color-brand-light: var(--accent-tint);
+  --color-brand-hover: var(--accent-hover);
+  --color-surface-page: var(--paper);
+  --color-surface-card: var(--surface);
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-2);
+  --color-text-muted: var(--ink-3);
+  --color-border-subtle: var(--hairline);
+  --shadow-elevated: var(--sh-card);
+
+  /* shadcn semantic surface */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -40,7 +88,7 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
+  --color-accent: var(--accent-ui);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -51,6 +99,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -61,107 +110,122 @@
 }
 
 :root {
-  --surface-page: #f7f7f7;
-  --surface-card: #ffffff;
-  --surface-elevated: #ffffff;
-  --border-subtle: #e5e7eb;
-  --border-strong: #d1d5db;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --brand: #2563eb;
-  --brand-light: #eff6ff;
-  --brand-hover: #1d4ed8;
-  --status-success: #16a34a;
-  --status-success-bg: #f0fdf4;
-  --status-warning: #d97706;
-  --status-warning-bg: #fffbeb;
-  --status-error: #dc2626;
-  --status-error-bg: #fef2f2;
-  --status-neutral: #6b7280;
-  --status-neutral-bg: #f9fafb;
-  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.07);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* ---- layer 1: Voce tokens ---- */
+
+  /* substrate */
+  --paper: oklch(0.975 0.014 95); /* ~#FBF9F3 warm cream page */
+  --paper-sunk: oklch(0.955 0.016 95); /* ~#F4F1E8 alternating bands */
+  --surface: #ffffff;
+
+  /* ink — warm near-black */
+  --ink: oklch(0.19 0.012 95); /* ~#221F1A text + structural borders */
+  --ink-2: oklch(0.19 0.012 95 / 0.64);
+  --ink-3: oklch(0.19 0.012 95 / 0.48);
+  --hairline: oklch(0.86 0.014 95); /* ~#DCD7CA internal dividers only */
+
+  /* accent — Voce blue, kept for brand continuity.
+     Saturated blue is for controls; --p-blue fills colour-block bands. */
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-tint: #eff4ff;
+
+  /* four data pastels at identical lightness + chroma (Voiceprint axes) */
+  --p-blue: oklch(0.84 0.13 255); /* specificity */
+  --p-coral: oklch(0.84 0.13 40); /* ai-tells    */
+  --p-lilac: oklch(0.84 0.13 300); /* cadence     */
+  --p-sage: oklch(0.84 0.13 140); /* grounding   */
+  /* 5th pastel, status-only: keeps `warning` distinct from `flagged`.
+     Deliberately NOT a Voiceprint axis — the device stays four-petalled. */
+  --p-amber: oklch(0.84 0.13 75);
+  --linkedin: #0077b5;
+
+  /* status — warmed to sit on paper */
+  --status-success: oklch(0.55 0.13 150);
+  --status-success-bg: oklch(0.95 0.04 150);
+  --status-warning: oklch(0.65 0.14 70);
+  --status-warning-bg: oklch(0.96 0.05 85);
+  --status-error: oklch(0.52 0.19 25);
+  --status-error-bg: oklch(0.95 0.04 25);
+  --status-neutral: var(--ink-2);
+  --status-neutral-bg: var(--paper-sunk);
+
+  /* hard shadows — zero blur, ink-coloured */
+  --sh-card: 6px 6px 0 var(--ink);
+  --sh-btn: 4px 4px 0 var(--ink);
+  --sh-btn-h: 6px 6px 0 var(--ink);
+  --sh-nav: 3px 3px 0 var(--ink);
+  --sh-accent: 4px 4px 0 var(--accent);
+  --sh-xs: 2px 2px 0 var(--ink);
+
+  /* shape */
+  --radius: 10px;
+  --border-w: 2px;
+
+  /* ---- layer 2: shadcn semantic remap ----
+     --border and --input stay HAIRLINE: shadcn primitives apply them at 1px in
+     many places, and full ink at 1px reads as a stray black line. Structural
+     2px ink borders are opt-in via `border-2 border-ink`. */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--paper-sunk);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-sunk);
+  --muted-foreground: var(--ink-2);
+  --accent-ui: var(--accent-tint);
+  --accent-foreground: var(--ink);
+  --destructive: var(--status-error);
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--accent);
+
+  --chart-1: var(--p-blue);
+  --chart-2: var(--p-coral);
+  --chart-3: var(--p-lilac);
+  --chart-4: var(--p-sage);
+  --chart-5: var(--ink-2);
+
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--p-blue);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--ink);
+  --sidebar-ring: var(--accent);
 }
 
+/* The app is light-only by design (reference direction V1 has no dark mode).
+   This block exists so any stray `dark:` variant degrades sanely rather than
+   falling back to the old cold greys. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.19 0.012 95);
+  --foreground: oklch(0.975 0.014 95);
+  --card: oklch(0.24 0.012 95);
+  --card-foreground: oklch(0.975 0.014 95);
+  --popover: oklch(0.24 0.012 95);
+  --popover-foreground: oklch(0.975 0.014 95);
+  --primary: oklch(0.7 0.15 255);
+  --primary-foreground: oklch(0.19 0.012 95);
+  --secondary: oklch(0.28 0.012 95);
+  --secondary-foreground: oklch(0.975 0.014 95);
+  --muted: oklch(0.28 0.012 95);
+  --muted-foreground: oklch(0.975 0.014 95 / 0.64);
+  --accent-ui: oklch(0.28 0.012 95);
+  --accent-foreground: oklch(0.975 0.014 95);
+  --border: oklch(0.975 0.014 95 / 0.14);
+  --input: oklch(0.975 0.014 95 / 0.14);
+  --ring: oklch(0.7 0.15 255);
+  --sidebar: oklch(0.24 0.012 95);
+  --sidebar-foreground: oklch(0.975 0.014 95);
+  --sidebar-accent: oklch(0.28 0.012 95);
+  --sidebar-accent-foreground: oklch(0.975 0.014 95);
+  --sidebar-border: oklch(0.975 0.014 95 / 0.14);
 }
 
 @layer base {
@@ -169,13 +233,140 @@
     @apply border-border outline-ring/50;
   }
   body {
-    background-color: var(--surface-page);
-    color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ============================================================
+   Signature utilities
+   ============================================================ */
+
+@layer components {
+  /* Physical press. Rest sits at (0,0) carrying the shadow; hover lifts
+     up-left and grows it; active drops down-right and flattens it. */
+  .press {
+    box-shadow: var(--sh-btn);
+    transition:
+      transform 120ms,
+      box-shadow 120ms;
+  }
+  .press:hover:not(:disabled) {
+    transform: translate(-2px, -2px);
+    box-shadow: var(--sh-btn-h);
+  }
+  .press:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+
+  /* Card-weight press, for clickable cards carrying the 6px shadow. */
+  .press-card {
+    box-shadow: var(--sh-card);
+    transition:
+      transform 120ms,
+      box-shadow 120ms;
+  }
+  .press-card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 var(--ink);
+  }
+  .press-card:active {
+    transform: translate(2px, 2px);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+
+  /* Structural border — the 2px ink outline that defines the register. */
+  .ink-edge {
+    border: var(--border-w) solid var(--ink);
+  }
+  .ink-edge-dashed {
+    border: var(--border-w) dashed var(--ink);
+  }
+
+  /* Landing-only sticker tilt. Never used in-app. */
+  .sticker-l {
+    transform: rotate(-3deg);
+  }
+  .sticker-r {
+    transform: rotate(3deg);
+  }
+
+  /* Mono uppercase eyebrow. */
+  .eyebrow {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Display type. font-stretch is what gives Archivo its wide, dense look. */
+  .display-xl {
+    font-family: var(--font-archivo), system-ui, sans-serif;
+    font-weight: 800;
+    font-stretch: 125%;
+    font-size: clamp(56px, 7.2vw, 104px);
+    line-height: 0.92;
+    letter-spacing: -0.025em;
+  }
+  .display-1 {
+    font-family: var(--font-archivo), system-ui, sans-serif;
+    font-weight: 800;
+    font-stretch: 125%;
+    font-size: clamp(40px, 4.4vw, 64px);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .display-2 {
+    font-family: var(--font-archivo), system-ui, sans-serif;
+    font-weight: 800;
+    font-stretch: 125%;
+    font-size: clamp(32px, 3vw, 44px);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+  }
+  .display-3 {
+    font-family: var(--font-archivo), system-ui, sans-serif;
+    font-weight: 750;
+    font-stretch: 112%;
+    font-size: 28px;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+  }
+
+  /* 2px underline links, accent on hover. */
+  .link-rule {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    transition: color 120ms;
+  }
+  .link-rule:hover {
+    color: var(--accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press,
+  .press-card {
+    transition: none;
+  }
+  .press:hover,
+  .press:active,
+  .press-card:hover,
+  .press-card:active {
+    transform: none;
+  }
+  .sticker-l,
+  .sticker-r {
+    transform: none;
   }
 }

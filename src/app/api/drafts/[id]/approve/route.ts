@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, eq } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
@@ -59,6 +61,11 @@ Return plain text only, no JSON, no bullet points.`,
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { scheduledAt?: string };
+    return Response.json(demoDrafts.approve(id, body?.scheduledAt));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

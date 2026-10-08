@@ -1,9 +1,17 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, draftQueue, researchItems, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET(request: Request) {
+  if (isDemo()) {
+    const demoUrl = new URL(request.url);
+    return Response.json(
+      demoDrafts.list(demoUrl.searchParams.get("status") ?? "pending", Number(demoUrl.searchParams.get("limit") ?? "20")),
+    );
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

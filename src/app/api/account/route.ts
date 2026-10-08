@@ -1,3 +1,4 @@
+import { isDemo } from "@/lib/demo/mode";
 import { createClient } from "@supabase/supabase-js";
 import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -18,6 +19,8 @@ import {
 } from "@/lib/db/schema";
 
 export async function DELETE() {
+  // Demo mode never deletes anything: the fixtures stay put and the UI gets its success shape.
+  if (isDemo()) return NextResponse.json({ success: true });
   const { userId, unauthorized } = await getAuthenticatedUser();
   if (unauthorized) return unauthorized;
 

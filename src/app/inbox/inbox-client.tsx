@@ -3,11 +3,23 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Inbox, Loader2, X } from "lucide-react";
 import DraftCard, { DraftView } from "@/components/DraftCard";
+import GenerationStream, {
+  type GenerationFailure,
+  type GenerationResult,
+} from "@/components/GenerationStream";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/Toast";
 
-export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: boolean }) {
+export default function InboxClient({
+  showPaymentBanner,
+  demoMode = false,
+}: {
+  showPaymentBanner: boolean;
+  /** Server-side isDemo(), threaded from the RSC page. Enables the streamed generation reveal. */
+  demoMode?: boolean;
+}) {
   const [drafts, setDrafts] = useState<DraftView[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [hasIncompleteSetup, setHasIncompleteSetup] = useState(false);
@@ -20,6 +32,8 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   const [lastCronStatus, setLastCronStatus] = useState<string | null>(null);
   const [lastCronAt, setLastCronAt] = useState<string | null>(null);
   const [hasPersonalization, setHasPersonalization] = useState(false);
+  // Demo only: an in-flight streamed generation. `key` remounts the stream per run.
+  const [streamRun, setStreamRun] = useState<{ key: number; topic?: string } | null>(null);
   const { showToast } = useToast();
 
   const loadDrafts = () => {
@@ -80,34 +94,36 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   function renderPaymentFailedBanner() {
     if (!showPaymentBannerVisible) return null;
     return (
-      <div className="mb-4 flex items-center justify-between rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-3">
+      <div className="ink-edge mb-4 flex items-center justify-between gap-3 rounded-[10px] bg-p-coral p-3">
         <div className="flex items-center gap-2.5">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-[#D97706]" />
-          <p className="text-[13px] text-[#92400E]">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-ink" />
+          <p className="text-[13px] font-medium text-ink">
             Your last payment failed. Update your card to keep your account active.
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <button
+          <Button
             type="button"
+            size="sm"
             disabled={portalLoading}
             onClick={() => void openBillingPortal()}
-            className="text-[12px] font-medium text-[#D97706] transition-colors hover:text-[#92400E] disabled:opacity-50"
           >
             {portalLoading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               "Update payment method →"
             )}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="text-ink hover:bg-ink/10"
             onClick={() => setShowPaymentBannerVisible(false)}
-            className="text-[#D97706] hover:text-[#92400E]"
             aria-label="Dismiss"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
+            <X />
+          </Button>
         </div>
       </div>
     );
@@ -116,26 +132,75 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
   function renderSetupBanner() {
     if (!hasIncompleteSetup || !showSetupBanner) return null;
     return (
-      <div className="mb-4 flex items-center justify-between rounded-lg border border-[#FDE68A] bg-[#FFFBEB] p-3">
+      <div className="ink-edge mb-4 flex items-center justify-between gap-3 rounded-[10px] bg-p-amber p-3">
         <div className="flex items-center gap-2.5">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-[#D97706]" />
-          <p className="text-[13px] text-[#92400E]">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-ink" />
+          <p className="text-[13px] font-medium text-ink">
             Your account isn&apos;t fully set up yet - complete setup to start generating drafts.
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <a href="/onboarding" className="text-[12px] font-medium text-[#D97706] transition-colors hover:text-[#92400E]">
+          <a href="/onboarding" className={buttonVariants({ size: "sm" })}>
             Complete setup →
           </a>
-          <button onClick={() => setShowSetupBanner(false)} className="text-[#D97706] hover:text-[#92400E]">
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="text-ink hover:bg-ink/10"
+            onClick={() => setShowSetupBanner(false)}
+            aria-label="Dismiss"
+          >
+            <X />
+          </Button>
         </div>
       </div>
     );
   }
 
+  function handleStreamComplete(result: GenerationResult) {
+    const wasQuick = !!streamRun?.topic;
+    setStreamRun(null);
+    setIsGenerating(false);
+    setIsQuickGenerating(false);
+    if (wasQuick) {
+      setQuickTopic("");
+      if (typeof result.remainingToday === "number") setQuickRemaining(result.remainingToday);
+    }
+    showToast(wasQuick ? "Draft added to inbox" : "New draft added to inbox");
+    loadDrafts();
+  }
+
+  function handleStreamFailed(failure: GenerationFailure) {
+    if (failure.status === 429) setQuickRemaining(0);
+  }
+
+  function handleStreamDismiss() {
+    setStreamRun(null);
+    setIsGenerating(false);
+    setIsQuickGenerating(false);
+  }
+
+  function renderGenerationStream() {
+    if (!streamRun) return null;
+    return (
+      <GenerationStream
+        key={streamRun.key}
+        topic={streamRun.topic}
+        onComplete={handleStreamComplete}
+        onFailed={handleStreamFailed}
+        onDismiss={handleStreamDismiss}
+      />
+    );
+  }
+
   async function handleGenerateDraft() {
+    if (demoMode) {
+      if (streamRun) return;
+      setIsGenerating(true);
+      setStreamRun({ key: Date.now() });
+      return;
+    }
     try {
       setIsGenerating(true);
       const res = await fetch("/api/drafts/generate-one", { method: "POST" });
@@ -151,6 +216,12 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
 
   async function handleQuickGenerate() {
     if (!quickTopic.trim() || isQuickGenerating || quickRemaining <= 0) return;
+    if (demoMode) {
+      if (streamRun) return;
+      setIsQuickGenerating(true);
+      setStreamRun({ key: Date.now(), topic: quickTopic.trim() });
+      return;
+    }
     setIsQuickGenerating(true);
     try {
       const res = await fetch("/api/drafts/generate-quick", {
@@ -184,9 +255,9 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
 
   function renderQuickGenerate() {
     return (
-      <div className="mb-4 rounded-lg border border-[#E5E7EB] bg-white p-3 shadow-[0_1px_2px_0_rgb(0_0_0/0.05)]">
-        <div className="flex items-center gap-2">
-          <input
+      <div className="ink-edge mb-4 rounded-[10px] bg-surface p-4 shadow-card">
+        <div className="flex items-center gap-3">
+          <Input
             type="text"
             value={quickTopic}
             onChange={(e) => setQuickTopic(e.target.value)}
@@ -195,19 +266,18 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
             }}
             placeholder="What do you want to post about?"
             disabled={isQuickGenerating || quickRemaining <= 0}
-            className="h-8 flex-1 rounded-md border border-[#E5E7EB] px-3 text-[13px] outline-none placeholder:text-[#9CA3AF] focus:border-[#2563EB] disabled:opacity-50"
+            className="flex-1"
           />
-          <button
+          <Button
             type="button"
             onClick={() => void handleQuickGenerate()}
             disabled={!quickTopic.trim() || isQuickGenerating || quickRemaining <= 0}
-            className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
           >
-            {isQuickGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            {isQuickGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {isQuickGenerating ? "Generating..." : "Generate"}
-          </button>
+          </Button>
         </div>
-        <p className="mt-1.5 text-[11px] text-[#9CA3AF]">
+        <p className={`eyebrow mt-3 ${quickRemaining > 0 ? "text-ink-3" : "text-ink-2"}`}>
           {quickRemaining > 0
             ? `${quickRemaining} of 3 quick generates remaining today`
             : "Daily limit reached · Resets at midnight UTC"}
@@ -227,22 +297,25 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
         {renderPaymentFailedBanner()}
         {renderSetupBanner()}
         {renderQuickGenerate()}
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#F3F4F6]">
-            <Inbox className="h-6 w-6 text-[#9CA3AF]" />
+        {renderGenerationStream()}
+        <div
+          className={`ink-edge-dashed flex-col items-center justify-center rounded-[10px] bg-paper-sunk px-6 py-16 text-center ${streamRun ? "hidden" : "flex"}`}
+        >
+          <div className="ink-edge mb-4 flex h-12 w-12 items-center justify-center rounded-[10px] bg-surface">
+            <Inbox className="h-6 w-6 text-ink" />
           </div>
           {cronProducedNothing ? (
             <>
-              <h3 className="mb-1 text-[15px] font-semibold text-[#111827]">No on-topic research today</h3>
-              <p className="max-w-sm text-[13px] text-[#6B7280]">
+              <h3 className="mb-1 text-[16px] font-semibold text-ink">No on-topic research today</h3>
+              <p className="max-w-sm text-[13px] text-ink-2">
                 Nothing in today&apos;s research closely matched your topics. We&apos;ll keep looking
                 tomorrow. To generate a draft on a specific topic right now, use Quick Generate above.
               </p>
             </>
           ) : (
             <>
-              <h3 className="mb-1 text-[15px] font-semibold text-[#111827]">No drafts waiting</h3>
-              <p className="max-w-xs text-[13px] text-[#6B7280]">
+              <h3 className="mb-1 text-[16px] font-semibold text-ink">No drafts waiting</h3>
+              <p className="max-w-xs text-[13px] text-ink-2">
                 New drafts are generated overnight. Check back tomorrow morning, or generate one now.
               </p>
             </>
@@ -269,6 +342,7 @@ export default function InboxClient({ showPaymentBanner }: { showPaymentBanner: 
       {renderPaymentFailedBanner()}
       {renderSetupBanner()}
       {renderQuickGenerate()}
+      {renderGenerationStream()}
       <div className="space-y-4">
         {drafts.map((draft) => (
           <DraftCard

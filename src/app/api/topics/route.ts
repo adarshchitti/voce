@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { createDemoTopic, deleteDemoTopic, demoTopics, updateDemoTopic } from "@/lib/demo/workspace";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { topicSubscriptions } from "@/lib/db/schema";
@@ -5,6 +7,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { sanitiseTavilyQuery, sanitiseTopicLabel } from "@/lib/sanitise";
 
 export async function GET() {
+  if (isDemo()) return Response.json(demoTopics());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -16,6 +19,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (isDemo()) {
+    const topic = createDemoTopic(await request.json().catch(() => ({})));
+    if (!topic) return Response.json({ error: "topicLabel and tavilyQuery are required" }, { status: 400 });
+    return Response.json({ topic });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -50,6 +58,13 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  if (isDemo()) {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+    const topic = updateDemoTopic(id, await request.json().catch(() => ({})));
+    if (!topic) return Response.json({ error: "Topic not found" }, { status: 404 });
+    return Response.json({ topic });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -84,6 +99,11 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  if (isDemo()) {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return Response.json({ error: "id is required" }, { status: 400 });
+    return Response.json(deleteDemoTopic(id));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

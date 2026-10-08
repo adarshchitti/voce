@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -19,6 +21,12 @@ import { scoreVoiceDetailed } from "@/lib/ai/score-voice";
 import { sanitiseInstruction } from "@/lib/sanitise";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { instruction?: string };
+    if (!body.instruction?.trim()) return Response.json({ error: "instruction is required" }, { status: 400 });
+    return Response.json(demoDrafts.regenerate(id, body.instruction));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

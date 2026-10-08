@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { retryDemoPost } from "@/lib/demo/workspace";
 import { NextRequest } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -9,6 +11,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (isDemo()) {
+    const { id } = await params;
+    const post = retryDemoPost(id);
+    if (!post) return Response.json({ error: "Post is not in failed state" }, { status: 409 });
+    return Response.json({ ok: true, postId: post.id });
+  }
   try {
     const { id } = await params;
     void request;

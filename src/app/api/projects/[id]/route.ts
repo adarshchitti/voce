@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { archiveDemoProject, demoProjectDetail, updateDemoProject } from "@/lib/demo/workspace";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries } from "@/lib/db/schema";
@@ -62,6 +64,10 @@ function toProjectDetail(
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const detail = demoProjectDetail((await params).id);
+    return detail ? Response.json(detail) : Response.json({ error: "Project not found" }, { status: 404 });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -86,6 +92,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const updated = updateDemoProject((await params).id, (await request.json().catch(() => ({}))) as Record<string, unknown>);
+    return updated ? Response.json(updated) : Response.json({ error: "Project not found" }, { status: 404 });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -133,6 +143,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) return Response.json(archiveDemoProject((await params).id));
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

@@ -1,9 +1,16 @@
 import { updateSession } from "@/lib/supabase/middleware";
 import { NextResponse, type NextRequest } from "next/server";
+import { isDemo } from "@/lib/demo/mode";
 
 export async function middleware(request: NextRequest) {
-  const publicPaths = ["/login", "/signup", "/auth/callback", "/api/cron/", "/api/billing/webhook"];
-  const isPublic = publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
+  const publicPaths = ["/login", "/signup", "/auth/callback", "/api/cron/", "/api/billing/webhook", "/_design"];
+  // "/" must be an EXACT match: startsWith("/") is true for every path and would make the whole app public.
+  const isPublic =
+    request.nextUrl.pathname === "/" || publicPaths.some((path) => request.nextUrl.pathname.startsWith(path));
+
+  // Demo mode: the Supabase project is gone, so updateSession() would hang on DNS.
+  // Let every route through; auth.ts supplies the synthetic user.
+  if (isDemo()) return NextResponse.next();
 
   const { supabaseResponse, user } = await updateSession(request);
 

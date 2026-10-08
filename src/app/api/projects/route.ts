@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { createDemoProject, demoProjects } from "@/lib/demo/workspace";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, seriesTopicSubscriptions, topicSubscriptions } from "@/lib/db/schema";
@@ -49,6 +51,7 @@ function toProjectResponse(
 }
 
 export async function GET() {
+  if (isDemo()) return Response.json(demoProjects());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -82,6 +85,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (isDemo()) {
+    const body = (await request.json().catch(() => ({}))) as CreateProjectBody;
+    if (!body.title?.trim()) return Response.json({ error: "title is required" }, { status: 400 });
+    return Response.json(createDemoProject(body));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

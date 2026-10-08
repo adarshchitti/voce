@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { linkedinTokens, userSettings } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 import type { scheduleUserGenerateTask } from "@/trigger/scheduleUserGenerate";
+import { isDemo } from "@/lib/demo/mode";
+import { demoSettings, updateDemoSettings } from "@/lib/demo/workspace";
 
 const defaults = {
   cadenceMode: "daily",
@@ -30,6 +32,7 @@ const schedulingPreferencesSchema = z.object({
 });
 
 export async function GET() {
+  if (isDemo()) return Response.json(demoSettings());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -47,6 +50,10 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (isDemo()) {
+    updateDemoSettings(await request.json().catch(() => ({})));
+    return Response.json({ success: true });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -59,6 +66,10 @@ export async function PUT(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  if (isDemo()) {
+    updateDemoSettings(await request.json().catch(() => ({})));
+    return Response.json({ success: true });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

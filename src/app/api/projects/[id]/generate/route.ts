@@ -1,3 +1,6 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
+import { demoProjectNextPosition } from "@/lib/demo/workspace";
 import Anthropic from "@anthropic-ai/sdk";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -75,6 +78,26 @@ function looksRelatedToTopics(input: { title: string; summary: string | null; to
 }
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id: projectId } = await params;
+    const project = demoProjectNextPosition(projectId);
+    if (!project) return Response.json({ error: "Project not found" }, { status: 404 });
+    const { draftId } = demoDrafts.generateOne();
+    // list() hands back the live store objects, so tagging the new draft with its
+    // project makes the inbox card show the series chip and position.
+    const draft = demoDrafts.list("pending", 500).drafts.find((d) => d.id === draftId);
+    if (draft) {
+      draft.seriesId = projectId;
+      draft.seriesTitle = project.title;
+      draft.seriesPosition = project.seriesPosition;
+    }
+    return Response.json({
+      draftId,
+      seriesPosition: project.seriesPosition,
+      researchItemTitle: draft?.researchItem?.title ?? "",
+      fallbackUsed: false,
+    });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

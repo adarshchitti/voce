@@ -1,4 +1,6 @@
+import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { isBillingEnabled } from "@/lib/billing";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { subscriptions } from "@/lib/db/schema";
@@ -9,6 +11,8 @@ function getStripe(): Stripe {
 }
 
 export async function POST() {
+  // Billing disabled: no portal to open. A null url keeps every caller on-site.
+  if (!isBillingEnabled()) return NextResponse.json({ url: null });
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

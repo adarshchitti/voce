@@ -4,6 +4,7 @@ import { Check, Loader2, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { chipVariants } from "@/components/ui/chip";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,18 +42,18 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
           <div key={label} className="flex min-w-fit items-center gap-2">
             <div
               className={cn(
-                "flex h-5 w-5 items-center justify-center rounded-full border text-[11px]",
-                done && "border-muted-foreground bg-muted text-muted-foreground",
-                current && "border-foreground bg-background font-semibold text-foreground",
-                !done && !current && "border-muted text-muted-foreground",
+                "flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink text-[11px]",
+                done && "bg-p-sage font-semibold text-ink",
+                current && "bg-p-blue font-semibold text-ink",
+                !done && !current && "bg-surface text-ink-3",
               )}
             >
               {done ? <Check className="h-3 w-3" /> : step}
             </div>
-            <span className={cn(done && "text-muted-foreground", current ? "font-semibold text-foreground" : "text-muted-foreground")}>
+            <span className={cn(current ? "font-semibold text-ink" : "text-ink-2")}>
               {label}
             </span>
-            {step < STEP_LABELS.length ? <div className="h-px w-6 bg-border" /> : null}
+            {step < STEP_LABELS.length ? <div className="h-0.5 w-6 bg-ink/20" /> : null}
           </div>
         );
       })}
@@ -206,7 +207,7 @@ export default function NewProjectWizard({
         {step === 1 ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Project name</label>
+              <label className="text-sm font-medium text-ink">Project name</label>
               <Input
                 placeholder="e.g. Building Voce in Public"
                 value={formData.title}
@@ -214,7 +215,7 @@ export default function NewProjectWizard({
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Goal</label>
+              <label className="text-sm font-medium text-ink">Goal</label>
               <Textarea
                 rows={2}
                 maxLength={300}
@@ -222,11 +223,11 @@ export default function NewProjectWizard({
                 value={formData.goal}
                 onChange={(e) => setFormData((prev) => ({ ...prev, goal: e.target.value }))}
               />
-              <p className="text-xs text-muted-foreground">Keep it concise — one sentence works best</p>
+              <p className="text-xs text-ink-2">Keep it concise — one sentence works best</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Start date</label>
+                <label className="text-sm font-medium text-ink">Start date</label>
                 <Input
                   type="date"
                   value={formData.startDate}
@@ -234,7 +235,7 @@ export default function NewProjectWizard({
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Target posts</label>
+                <label className="text-sm font-medium text-ink">Target posts</label>
                 <Input
                   type="number"
                   min={1}
@@ -255,7 +256,7 @@ export default function NewProjectWizard({
         {step === 2 ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Target audience</label>
+              <label className="text-sm font-medium text-ink">Target audience</label>
               <Textarea
                 rows={3}
                 maxLength={200}
@@ -263,10 +264,10 @@ export default function NewProjectWizard({
                 value={formData.targetAudience}
                 onChange={(e) => setFormData((prev) => ({ ...prev, targetAudience: e.target.value }))}
               />
-              <p className="text-xs text-muted-foreground">Describe your reader in 1-2 sentences</p>
+              <p className="text-xs text-ink-2">Describe your reader in 1-2 sentences</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Narrative style</label>
+              <label className="text-sm font-medium text-ink">Narrative style</label>
               <Select
                 value={formData.arcType || "none"}
                 onValueChange={(value) =>
@@ -293,8 +294,8 @@ export default function NewProjectWizard({
         {step === 3 ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <p className="text-sm font-medium">Existing topic subscriptions</p>
-              {topicsLoading ? <p className="text-sm text-muted-foreground">Loading topics...</p> : null}
+              <p className="text-sm font-medium text-ink">Existing topic subscriptions</p>
+              {topicsLoading ? <p className="text-sm text-ink-2">Loading topics...</p> : null}
               <div className="space-y-2">
                 {topics.map((topic) => {
                   const selected = selectedTopicMap.get(topic.id);
@@ -302,25 +303,25 @@ export default function NewProjectWizard({
                     <div
                       key={topic.id}
                       className={cn(
-                        "rounded-lg border p-3 transition-colors",
-                        selected ? "border-primary bg-primary/5" : "hover:bg-accent/40",
+                        "rounded-[10px] border-2 p-3 transition-colors",
+                        selected ? "border-ink bg-accent-tint" : "border-hairline hover:bg-paper-sunk",
                       )}
                     >
                       <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => toggleTopic(topic)}>
-                        <span className="text-sm font-medium">{topic.topicLabel}</span>
-                        <span className={cn("text-xs", selected ? "text-primary" : "text-muted-foreground")}>{selected ? "Selected" : "Select"}</span>
+                        <span className="text-sm font-medium text-ink">{topic.topicLabel}</span>
+                        <span className={cn("text-xs", selected ? "font-medium text-accent-solid" : "text-ink-3")}>{selected ? "Selected" : "Select"}</span>
                       </button>
                       {selected ? (
                         <div className="mt-2 flex items-center gap-1">
-                          <span className="mr-1 text-xs text-muted-foreground">Priority:</span>
+                          <span className="mr-1 text-xs text-ink-2">Priority:</span>
                           {[1, 2, 3, 4, 5].map((weight) => (
                             <button
                               key={weight}
                               type="button"
                               onClick={() => setTopicPriority(topic.id, weight)}
                               className={cn(
-                                "h-6 w-6 rounded border text-[11px]",
-                                selected.priorityWeight === weight ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent",
+                                "h-6 w-6 rounded-md border-2 text-[11px]",
+                                selected.priorityWeight === weight ? "border-ink bg-p-blue text-ink" : "border-hairline bg-surface text-ink-2 hover:bg-paper-sunk",
                               )}
                             >
                               {weight}
@@ -331,13 +332,13 @@ export default function NewProjectWizard({
                     </div>
                   );
                 })}
-                {!topicsLoading && topics.length === 0 ? <p className="text-sm text-muted-foreground">No global topics yet.</p> : null}
+                {!topicsLoading && topics.length === 0 ? <p className="text-sm text-ink-2">No global topics yet.</p> : null}
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-medium">Project-specific topics (optional)</p>
-              <p className="text-xs text-muted-foreground">These only apply to this project - they will not change your global research.</p>
+              <p className="text-sm font-medium text-ink">Project-specific topics (optional)</p>
+              <p className="text-xs text-ink-2">These only apply to this project - they will not change your global research.</p>
               <div className="flex gap-2">
                 <Input
                   placeholder="Add topic"
@@ -362,7 +363,7 @@ export default function NewProjectWizard({
                     key={topic}
                     type="button"
                     onClick={() => setFormData((prev) => ({ ...prev, projectTopics: prev.projectTopics.filter((item) => item !== topic) }))}
-                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs"
+                    className={chipVariants({ tone: "neutral", size: "default", interactive: true })}
                   >
                     {topic}
                     <X className="h-3 w-3" />
@@ -376,7 +377,7 @@ export default function NewProjectWizard({
         {step === 4 ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">What kinds of posts should this project generate?</label>
+              <label className="text-sm font-medium text-ink">What kinds of posts should this project generate?</label>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: "thought_leadership", label: "Thought leadership" },
@@ -394,8 +395,8 @@ export default function NewProjectWizard({
                       type="button"
                       onClick={() => togglePostType(postType.id)}
                       className={cn(
-                        "rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                        selected ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent",
+                        "rounded-[10px] border-2 border-ink px-3 py-2 text-left text-sm transition-colors",
+                        selected ? "bg-p-blue text-ink" : "bg-surface text-ink-2 hover:bg-paper-sunk hover:text-ink",
                       )}
                     >
                       {selected ? "✓ " : ""}
@@ -407,7 +408,7 @@ export default function NewProjectWizard({
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Series hashtags (optional) - added to every post in this project</label>
+              <label className="text-sm font-medium text-ink">Series hashtags (optional) - added to every post in this project</label>
               <Input
                 placeholder="Type hashtag and press Enter"
                 value={hashtagInput}
@@ -426,7 +427,7 @@ export default function NewProjectWizard({
                     key={hashtag}
                     type="button"
                     onClick={() => setFormData((prev) => ({ ...prev, hashtags: prev.hashtags.filter((item) => item !== hashtag) }))}
-                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs"
+                    className={chipVariants({ tone: "blue", size: "default", interactive: true })}
                   >
                     {hashtag}
                     <X className="h-3 w-3" />
@@ -435,9 +436,10 @@ export default function NewProjectWizard({
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
+                className="size-4 accent-accent-solid"
                 checked={formData.autoGenerate}
                 onChange={(e) => setFormData((prev) => ({ ...prev, autoGenerate: e.target.checked }))}
               />
@@ -447,20 +449,20 @@ export default function NewProjectWizard({
         ) : null}
 
         {step === 5 ? (
-          <div className="rounded-lg border bg-card p-4 text-sm">
-            <h3 className="mb-3 text-base font-semibold">{formData.title || "Untitled project"}</h3>
-            <div className="space-y-2 text-muted-foreground">
-              <p><span className="font-medium text-foreground">Goal:</span> {formData.goal || "—"}</p>
-              <p><span className="font-medium text-foreground">Audience:</span> {formData.targetAudience || "—"}</p>
-              <p><span className="font-medium text-foreground">Topics:</span> {formData.selectedTopics.map((topic) => topic.label).join(" · ") || "—"}</p>
-              <p><span className="font-medium text-foreground">Post types:</span> {formData.postTypes.join(" · ") || "—"}</p>
-              <p><span className="font-medium text-foreground">Timeline:</span> {formData.startDate || "—"} {formData.targetPosts ? `→ ${formData.targetPosts} posts` : "→ ongoing"}</p>
-              <p><span className="font-medium text-foreground">Auto-generate:</span> {formData.autoGenerate ? "On" : "Off"}</p>
+          <div className="rounded-[10px] border-2 border-ink bg-paper-sunk p-4 text-sm">
+            <h3 className="mb-3 text-base font-semibold text-ink">{formData.title || "Untitled project"}</h3>
+            <div className="space-y-2 text-ink-2">
+              <p><span className="font-medium text-ink">Goal:</span> {formData.goal || "—"}</p>
+              <p><span className="font-medium text-ink">Audience:</span> {formData.targetAudience || "—"}</p>
+              <p><span className="font-medium text-ink">Topics:</span> {formData.selectedTopics.map((topic) => topic.label).join(" · ") || "—"}</p>
+              <p><span className="font-medium text-ink">Post types:</span> {formData.postTypes.join(" · ") || "—"}</p>
+              <p><span className="font-medium text-ink">Timeline:</span> {formData.startDate || "—"} {formData.targetPosts ? `→ ${formData.targetPosts} posts` : "→ ongoing"}</p>
+              <p><span className="font-medium text-ink">Auto-generate:</span> {formData.autoGenerate ? "On" : "Off"}</p>
             </div>
           </div>
         ) : null}
 
-        <div className="mt-2 flex items-center justify-between border-t pt-4">
+        <div className="mt-2 flex items-center justify-between border-t-2 border-ink pt-4">
           <Button variant="outline" onClick={() => setStep((prev) => Math.max(1, prev - 1))} disabled={step === 1 || creating}>
             ← Back
           </Button>
