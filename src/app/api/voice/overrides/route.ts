@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { patchDemoVoiceOverrides } from "@/lib/demo/workspace";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
@@ -12,6 +14,7 @@ import {
 const EMOJI_FREQUENCY_VALUES = ["none", "rare", "occasional", "frequent"] as const;
 
 export async function PATCH(request: Request) {
+  if (isDemo()) return Response.json(patchDemoVoiceOverrides(await request.json().catch(() => ({}))));
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

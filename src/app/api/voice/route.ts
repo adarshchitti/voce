@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoVoice, putDemoVoice } from "@/lib/demo/workspace";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
@@ -13,6 +15,7 @@ import {
 } from "@/lib/sanitise";
 
 export async function GET() {
+  if (isDemo()) return Response.json(demoVoice());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -24,6 +27,10 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (isDemo()) {
+    const result = putDemoVoice(await request.json().catch(() => ({})));
+    return result.ok ? Response.json({ success: true }) : Response.json({ error: result.error }, { status: 400 });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

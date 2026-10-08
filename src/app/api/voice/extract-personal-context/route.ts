@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { reExtractDemoPersonalContext } from "@/lib/demo/workspace";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { voiceProfiles } from "@/lib/db/schema";
@@ -12,6 +14,19 @@ import { extractPersonalContextComponents } from "@/lib/ai/extract-personal-cont
 // The settings UI surfaces this as a "Re-extract components" button next
 // to the personal_context textarea.
 export async function POST() {
+  if (isDemo()) {
+    const result = reExtractDemoPersonalContext();
+    if (!result) {
+      return Response.json(
+        {
+          error: "No personal_context saved. Add your background in Settings first.",
+          code: "NO_PERSONAL_CONTEXT",
+        },
+        { status: 400 },
+      );
+    }
+    return Response.json(result);
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

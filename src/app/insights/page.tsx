@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { draftQueue, rejectionReasons } from "@/lib/db/schema";
 import { and, count, eq } from "drizzle-orm";
 import { requireAuth } from "@/lib/auth";
+import { isDemo } from "@/lib/demo/mode";
+import { demoInsights } from "@/lib/demo/workspace";
 
 function StatCard({
   label,
@@ -31,21 +33,33 @@ function StatCard({
 }
 
 export default async function InsightsPage() {
+  const demo = isDemo() ? demoInsights() : null;
   const userId = await requireAuth();
-  const [approved] = await db.select({ value: count() }).from(draftQueue).where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "approved")));
-  const [rejected] = await db.select({ value: count() }).from(draftQueue).where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "rejected")));
-  const reasons = await db.select().from(rejectionReasons).where(eq(rejectionReasons.userId, userId)).limit(5);
+  const [approved] = demo
+    ? [{ value: demo.approved }]
+    : await db.select({ value: count() }).from(draftQueue).where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "approved")));
+  const [rejected] = demo
+    ? [{ value: demo.rejected }]
+    : await db.select({ value: count() }).from(draftQueue).where(and(eq(draftQueue.userId, userId), eq(draftQueue.status, "rejected")));
+  const reasons = demo
+    ? demo.reasons
+    : await db.select().from(rejectionReasons).where(eq(rejectionReasons.userId, userId)).limit(5);
 
   const total = approved.value + rejected.value;
   const approvalRate = total > 0 ? Math.round((approved.value / total) * 100) : 0;
   const rejectionRate = total > 0 ? Math.round((rejected.value / total) * 100) : 0;
-  const postsThisWeek = approved.value;
-  const avgVoiceScore: number | null = null;
+  const postsThisWeek = demo ? demo.postsThisWeek : approved.value;
+  const avgVoiceScore: number | null = demo ? demo.avgVoiceScore : null;
   const rejectionRateLabel = "all time";
 
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-semibold text-slate-900">Insights</h1>
+      {demo ? (
+        <p className="text-xs text-slate-500">
+          Illustrative data for a sample account. Figures are not from real LinkedIn analytics.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="This week" value={postsThisWeek} sub="posts published" />

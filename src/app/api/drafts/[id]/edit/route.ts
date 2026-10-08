@@ -1,9 +1,18 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { editedText?: string };
+    const editedText = body.editedText ?? "";
+    if (editedText.length > 3000) return Response.json({ error: "Draft exceeds 3000 characters" }, { status: 400 });
+    return Response.json(demoDrafts.edit(id, editedText));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { getDemoPost, rescheduleDemoPost } from "@/lib/demo/workspace";
 import { and, eq } from "drizzle-orm";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -7,6 +9,21 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { scheduledAt?: string };
+    if (!body.scheduledAt) return Response.json({ error: "scheduledAt required" }, { status: 400 });
+    const next = new Date(body.scheduledAt);
+    if (Number.isNaN(next.getTime())) return Response.json({ error: "Invalid date" }, { status: 400 });
+    const post = getDemoPost(id);
+    if (!post) return Response.json({ error: "Post not found" }, { status: 404 });
+    if (post.status !== "scheduled") {
+      return Response.json({ error: "Only scheduled posts can be rescheduled" }, { status: 400 });
+    }
+    rescheduleDemoPost(id, next.toISOString());
+    return Response.json({ success: true, scheduledAt: next.toISOString() });
+  }
+
   const { userId, unauthorized } = await getAuthenticatedUser();
   if (unauthorized) return unauthorized;
 

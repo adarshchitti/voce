@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoTopicExists, linkDemoProjectTopic, unlinkDemoProjectTopic } from "@/lib/demo/workspace";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { contentSeries, seriesTopicSubscriptions, topicSubscriptions } from "@/lib/db/schema";
@@ -14,6 +16,17 @@ async function ensureProjectOwner(seriesId: string, userId: string) {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as AddTopicBody;
+    if (!body.topicSubscriptionId || typeof body.priorityWeight !== "number") {
+      return Response.json({ error: "topicSubscriptionId and priorityWeight are required" }, { status: 400 });
+    }
+    if (!demoTopicExists(body.topicSubscriptionId) || !linkDemoProjectTopic(id, body.topicSubscriptionId, body.priorityWeight)) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    return Response.json({ success: true });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
@@ -48,6 +61,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as RemoveTopicBody;
+    if (!body.topicSubscriptionId) {
+      return Response.json({ error: "topicSubscriptionId is required" }, { status: 400 });
+    }
+    if (!unlinkDemoProjectTopic(id, body.topicSubscriptionId)) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    return Response.json({ success: true });
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

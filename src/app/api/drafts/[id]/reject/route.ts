@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, rejectionReasons, researchItems } from "@/lib/db/schema";
@@ -13,6 +15,12 @@ function inferStructure(text: string): string {
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as { reasonCode?: string };
+    if (!body.reasonCode) return Response.json({ error: "reasonCode is required" }, { status: 400 });
+    return Response.json(demoDrafts.reject(id));
+  }
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

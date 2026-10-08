@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
@@ -19,6 +21,7 @@ import { runFactCheckOrSkip, scanDraftForAITells, serializeAiTellFlags } from "@
 import { scoreVoice } from "@/lib/ai/score-voice";
 
 export async function POST() {
+  if (isDemo()) return Response.json(demoDrafts.generateOne());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

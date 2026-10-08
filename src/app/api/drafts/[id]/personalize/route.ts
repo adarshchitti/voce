@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftMemories, draftQueue, rejectionReasons, researchItems, userSettings, voiceProfiles } from "@/lib/db/schema";
@@ -12,6 +14,12 @@ import { buildPersonalAngleInstruction } from "@/lib/ai/personal-angle";
 import { FIELD_LIMITS, sanitiseShortText } from "@/lib/sanitise";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (isDemo()) {
+    const { id } = await params;
+    const result = demoDrafts.personalize(id);
+    if (!result) return Response.json({ error: "Draft not found" }, { status: 404 });
+    return Response.json(result);
+  }
   try {
     await request.text();
     const { userId, unauthorized } = await getAuthenticatedUser();

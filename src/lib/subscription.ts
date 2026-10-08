@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { subscriptions, userSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { isDemo } from "@/lib/demo/mode";
 
 export type SubscriptionStatus =
   | "trialing"
@@ -22,6 +23,18 @@ export type SubscriptionState = {
 };
 
 export async function getSubscriptionStatus(userId: string): Promise<SubscriptionState> {
+  if (isDemo()) {
+    return {
+      status: "beta",
+      canGenerate: true,
+      canPublish: true,
+      showPaymentBanner: false,
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+      betaAccessUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    };
+  }
+
   // Beta-access bypass runs ahead of the Stripe lookup. Stripe state is left
   // untouched; if beta expires, callers fall through to whatever Stripe says.
   const [settingsRow] = await db

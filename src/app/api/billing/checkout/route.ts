@@ -1,3 +1,4 @@
+import { isDemo } from "@/lib/demo/mode";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -11,6 +12,8 @@ function getStripe(): Stripe {
 }
 
 export async function POST() {
+  // No Stripe in demo mode. A null url makes onboarding fall through to /inbox.
+  if (isDemo()) return NextResponse.json({ url: null });
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

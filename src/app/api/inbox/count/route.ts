@@ -1,9 +1,12 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoDrafts } from "@/lib/demo/drafts";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { draftQueue } from "@/lib/db/schema";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function GET() {
+  if (isDemo()) return Response.json(demoDrafts.count());
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;

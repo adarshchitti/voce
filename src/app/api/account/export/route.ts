@@ -1,3 +1,5 @@
+import { isDemo } from "@/lib/demo/mode";
+import { demoExportBody } from "@/lib/demo/export";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -15,6 +17,16 @@ import {
 } from "@/lib/db/schema";
 
 export async function POST() {
+  if (isDemo()) {
+    const date = new Date().toISOString().split("T")[0];
+    return new NextResponse(demoExportBody(), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Disposition": `attachment; filename="voce-export-${date}.json"`,
+      },
+    });
+  }
   const { userId, unauthorized } = await getAuthenticatedUser();
   if (unauthorized) return unauthorized;
 

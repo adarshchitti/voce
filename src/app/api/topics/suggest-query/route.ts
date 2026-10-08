@@ -1,3 +1,4 @@
+import { isDemo } from "@/lib/demo/mode";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAuthenticatedUser } from "@/lib/auth";
 
@@ -8,6 +9,12 @@ function getClient() {
 }
 
 export async function POST(request: Request) {
+  if (isDemo()) {
+    const body = (await request.json().catch(() => ({}))) as { topicLabel?: string };
+    const label = body.topicLabel?.trim().slice(0, 100);
+    if (!label) return Response.json({ error: "topicLabel is required" }, { status: 400 });
+    return Response.json({ suggestedQuery: `${label} latest news, announcements and analysis` });
+  }
   try {
     const { unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
