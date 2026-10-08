@@ -9,6 +9,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { isBillingEnabled } from "@/lib/billing";
 
 const STEPS = ["Voice", "Topics", "LinkedIn", "Scheduling", "First draft"];
 const DAYS = [
@@ -165,6 +166,7 @@ function OnboardingPageInner() {
   const [draftPreview, setDraftPreview] = useState("");
   const [draftScores, setDraftScores] = useState<VoiceprintScores | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const billingEnabled = isBillingEnabled();
 
   const validPostCount = useMemo(() => samplePosts.filter((post) => post.trim().length >= 100).length, [samplePosts]);
 
@@ -807,7 +809,12 @@ function OnboardingPageInner() {
                     </p>
                   </>
                 ) : null}
-                {draftStatus !== "idle" ? (
+                {draftStatus !== "idle" && !billingEnabled ? (
+                  <Button size="lg" onClick={() => router.push("/inbox")}>
+                    Go to your inbox →
+                  </Button>
+                ) : null}
+                {draftStatus !== "idle" && billingEnabled ? (
                   <div className="space-y-3">
                     <Button
                       size="lg"

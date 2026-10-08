@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { subscriptions, userSettings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { isDemo } from "@/lib/demo/mode";
+import { isBillingEnabled } from "@/lib/billing";
 
 export type SubscriptionStatus =
   | "trialing"
@@ -32,6 +33,23 @@ export async function getSubscriptionStatus(userId: string): Promise<Subscriptio
       trialEndsAt: null,
       currentPeriodEnd: null,
       betaAccessUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    };
+  }
+
+  // Billing disabled: every account gets full access and no Stripe row is read
+  // or written. Reported as "beta" because that is the existing status for
+  // "entitled without a subscription"; betaAccessUntil stays null since no
+  // grant actually exists. Flipping the flag back restores normal gating with
+  // no data migration, because nothing here mutates Stripe state.
+  if (!isBillingEnabled()) {
+    return {
+      status: "beta",
+      canGenerate: true,
+      canPublish: true,
+      showPaymentBanner: false,
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+      betaAccessUntil: null,
     };
   }
 

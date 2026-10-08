@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Chip, chipVariants } from "@/components/ui/chip";
+import { isBillingEnabled } from "@/lib/billing";
 
 interface LinkedInTokenView {
   status: "active" | "expired" | string;
@@ -1227,7 +1228,7 @@ export default function SettingsClient({ subscription }: { subscription: Setting
               { id: "topics", label: "Topics" },
               { id: "scheduling", label: "Scheduling" },
               { id: "linkedin", label: "LinkedIn" },
-              { id: "billing", label: "Billing" },
+              ...(isBillingEnabled() ? [{ id: "billing", label: "Billing" }] : []),
               { id: "account", label: "Account" },
             ].map((item) => (
               <a
@@ -1984,13 +1985,15 @@ export default function SettingsClient({ subscription }: { subscription: Setting
             </div>
           </section>
 
-          <section id="billing" className="scroll-mt-6 space-y-4">
-            <div className="border-b-2 border-ink pb-3">
-              <h2 className="font-display text-[18px] font-bold text-ink">Billing</h2>
-              <p className="mt-0.5 text-[13px] text-ink-2">Subscription and payments</p>
-            </div>
-            <BillingCard subscription={subscription} />
-          </section>
+          {isBillingEnabled() ? (
+            <section id="billing" className="scroll-mt-6 space-y-4">
+              <div className="border-b-2 border-ink pb-3">
+                <h2 className="font-display text-[18px] font-bold text-ink">Billing</h2>
+                <p className="mt-0.5 text-[13px] text-ink-2">Subscription and payments</p>
+              </div>
+              <BillingCard subscription={subscription} />
+            </section>
+          ) : null}
 
           <section id="account" className="scroll-mt-6 space-y-4">
             <div className="border-b-2 border-ink pb-3">

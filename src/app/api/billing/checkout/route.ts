@@ -1,4 +1,5 @@
 import { isDemo } from "@/lib/demo/mode";
+import { isBillingEnabled } from "@/lib/billing";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -14,6 +15,9 @@ function getStripe(): Stripe {
 export async function POST() {
   // No Stripe in demo mode. A null url makes onboarding fall through to /inbox.
   if (isDemo()) return NextResponse.json({ url: null });
+  // Billing disabled: same null-url contract, so any caller still on this path
+  // falls through to /inbox instead of being sent to Stripe.
+  if (!isBillingEnabled()) return NextResponse.json({ url: null });
   try {
     const { userId, unauthorized } = await getAuthenticatedUser();
     if (unauthorized) return unauthorized;
