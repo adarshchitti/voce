@@ -10,8 +10,7 @@ export function Card({ className, padding = "md", children, ...props }: CardProp
   return (
     <div
       className={cn(
-        "rounded-lg border border-[#E5E7EB] bg-white",
-        "shadow-[0_1px_3px_0_rgb(0_0_0/0.07),0_1px_2px_-1px_rgb(0_0_0/0.07)]",
+        "rounded-[10px] border-2 border-ink bg-surface shadow-card",
         padding === "sm" && "p-3",
         padding === "md" && "p-4",
         padding === "lg" && "p-6",
@@ -34,7 +33,7 @@ export function CardHeader({ className, children, ...props }: React.HTMLAttribut
 
 export function CardTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 className={cn("text-[15px] font-semibold leading-snug text-[#111827]", className)} {...props}>
+    <h3 className={cn("text-[15px] font-semibold leading-tight text-ink", className)} {...props}>
       {children}
     </h3>
   );
@@ -42,7 +41,7 @@ export function CardTitle({ className, children, ...props }: React.HTMLAttribute
 
 export function CardDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn("text-[13px] leading-relaxed text-[#6B7280]", className)} {...props}>
+    <p className={cn("text-[13px] leading-relaxed text-ink-2", className)} {...props}>
       {children}
     </p>
   );

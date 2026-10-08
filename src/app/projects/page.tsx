@@ -8,6 +8,7 @@ import NewProjectWizard from "@/components/projects/NewProjectWizard";
 import { useToast } from "@/components/Toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 
@@ -86,17 +87,17 @@ export default function ProjectsPage() {
 
       {loading ? (
         <div className="flex h-[50vh] items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Loader2 className="h-5 w-5 animate-spin text-ink-3" />
         </div>
       ) : null}
 
       {empty ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#EFF6FF]">
-            <FolderKanban className="h-7 w-7 text-[#2563EB]" />
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[10px] border-2 border-ink bg-p-blue shadow-xs">
+            <FolderKanban className="h-7 w-7 text-ink" />
           </div>
-          <h3 className="mb-1 text-[16px] font-semibold text-[#111827]">No projects yet</h3>
-          <p className="max-w-sm text-[13px] leading-relaxed text-[#6B7280]">
+          <h3 className="display-3 mb-1 text-ink">No projects yet</h3>
+          <p className="max-w-sm text-[13px] leading-relaxed text-ink-2">
             Projects help you build consistent content with a clear goal, target audience, and timeline.
           </p>
           <Button className="mt-5" onClick={() => setWizardOpen(true)}>
@@ -110,23 +111,23 @@ export default function ProjectsPage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="cursor-pointer overflow-hidden rounded-lg border border-[#E5E7EB] bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.07)] transition-all hover:border-[#D1D5DB] hover:shadow-[0_4px_6px_-1px_rgb(0_0_0/0.07)]"
+              className="press-card cursor-pointer rounded-[10px] border-2 border-ink bg-surface"
               onClick={() => router.push(`/projects/${project.id}`)}
             >
               <div
                 className={cn(
-                  "h-1 w-full",
-                  project.status === "active" && "bg-[#2563EB]",
-                  project.status === "paused" && "bg-[#D97706]",
-                  project.status === "completed" && "bg-[#E5E7EB]",
+                  "h-3 w-full rounded-t-[8px] border-b-2 border-ink",
+                  project.status === "active" && "bg-p-blue",
+                  project.status === "paused" && "bg-p-amber",
+                  project.status === "completed" && "bg-paper-sunk",
                 )}
               />
               <div className="space-y-3 p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[15px] font-semibold leading-snug text-[#111827]">{project.title}</h3>
+                    <h3 className="truncate text-[15px] font-semibold leading-snug text-ink">{project.title}</h3>
                     {project.goal ? (
-                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-relaxed text-[#6B7280]">{project.goal}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-2">{project.goal}</p>
                     ) : null}
                   </div>
                   <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
@@ -137,13 +138,13 @@ export default function ProjectsPage() {
                         e.stopPropagation();
                       }}
                     >
-                      <summary className="list-none rounded-md p-1 hover:bg-[#F3F4F6]">
-                        <MoreHorizontal className="h-4 w-4 text-[#9CA3AF]" />
+                      <summary className="list-none cursor-pointer rounded-md p-1 hover:bg-paper-sunk">
+                        <MoreHorizontal className="h-4 w-4 text-ink-3" />
                       </summary>
-                      <div className="absolute right-0 z-10 mt-1 w-36 rounded-md border border-[#E5E7EB] bg-white p-1 text-sm shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
-                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-[#F3F4F6]">Edit</button>
-                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-[#F3F4F6]">Pause/Resume</button>
-                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-[#F3F4F6]">Archive</button>
+                      <div className="absolute right-0 z-10 mt-1 w-36 rounded-[10px] border-2 border-ink bg-surface p-1 text-sm text-ink shadow-xs">
+                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-paper-sunk">Edit</button>
+                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-paper-sunk">Pause/Resume</button>
+                        <button className="w-full rounded px-2 py-1.5 text-left hover:bg-paper-sunk">Archive</button>
                       </div>
                     </details>
                   </div>
@@ -151,29 +152,39 @@ export default function ProjectsPage() {
               {project.targetPosts ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-[#9CA3AF]">Progress</span>
-                    <span className="text-[11px] font-medium text-[#374151]">
+                    <span className="eyebrow text-ink-3">Progress</span>
+                    <span className="text-[11px] font-medium tabular-nums text-ink">
                       {project.postsPublished} / {project.targetPosts} posts
                     </span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[#F3F4F6]">
+                  <div className="h-3 overflow-hidden rounded-full border-2 border-ink bg-surface">
                     <div
-                      className="h-full rounded-full bg-[#2563EB] transition-all"
+                      className="h-full bg-p-blue transition-all"
                       style={{ width: `${Math.min((project.postsPublished / project.targetPosts) * 100, 100)}%` }}
                     />
                   </div>
                 </div>
               ) : (
-                <p className="text-[12px] text-[#9CA3AF]">
+                <p className="text-[12px] text-ink-2">
                   {project.postsPublished} post{project.postsPublished !== 1 ? "s" : ""} published
                 </p>
               )}
 
-                <div className="flex items-center justify-between border-t border-[#F3F4F6] pt-1 text-[11px] text-[#9CA3AF]">
-                  <span>
-                  {project.linkedTopics[0]?.topicLabel ?? "No topics"}
+                <div className="flex items-center justify-between border-t border-hairline pt-2 text-[11px] text-ink-3">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {project.linkedTopics[0] ? (
+                      <Chip tone="neutral" size="sm">
+                        {project.linkedTopics[0].topicLabel}
+                      </Chip>
+                    ) : (
+                      <Chip variant="dashed" size="sm">
+                        No topics
+                      </Chip>
+                    )}
                     {project.linkedTopics.length > 1 ? (
-                      <span className="ml-1 text-[#9CA3AF]">+{project.linkedTopics.length - 1}</span>
+                      <Chip variant="ghost" size="sm">
+                        +{project.linkedTopics.length - 1}
+                      </Chip>
                     ) : null}
                   </span>
                   <span>

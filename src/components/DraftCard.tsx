@@ -18,11 +18,16 @@ import {
 import RejectionModal from "./RejectionModal";
 import { useToast } from "./Toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { calculateScheduledAt } from "@/lib/scheduler";
 import { cn } from "@/lib/utils";
 import { combineDateAndTime } from "@/lib/utils";
 import { LinkedInPreview } from "./LinkedInPreview";
+import { QualityFlags, parseAiTellFlags } from "./QualityFlags";
 
 export type DraftView = {
   id: string;
@@ -57,109 +62,6 @@ function isNearStale(staleAfter: string | Date): boolean {
   return diff > 0 && diff < 12 * 60 * 60 * 1000;
 }
 
-type UiFlag = {
-  ruleId: string;
-  category: "lexical" | "phrase" | "structural";
-  severity: "info" | "warning";
-  action: "flag" | "auto_strip" | "regenerate";
-  message: string;
-  details?: string;
-};
-
-type ParsedAiTellFlags = {
-  flags: UiFlag[];
-  voice: string[];
-};
-
-// Reads the new {flags: [...]} shape produced by serializeAiTellFlags after
-// the May 2026 quality-rules rebuild. Falls back to the pre-rebuild shape
-// ({words, phrases, structureIssues, markdownStripped}) so drafts already
-// in draft_queue when the rebuild deploys still render meaningfully — those
-// rows fade out within 24–72 h via staleAfter.
-function parseAiTellFlags(raw: string | null): ParsedAiTellFlags {
-  if (!raw) return { flags: [], voice: [] };
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const voice = Array.isArray(parsed.voice) ? (parsed.voice as string[]) : [];
-    if (Array.isArray(parsed.flags)) {
-      return { flags: parsed.flags as UiFlag[], voice };
-    }
-    // Legacy shape — translate.
-    const flags: UiFlag[] = [];
-    const words = (parsed.words as string[]) ?? [];
-    if (words.length > 0) {
-      flags.push({
-        ruleId: "legacy_word",
-        category: "lexical",
-        severity: "warning",
-        action: "flag",
-        message: "Generic AI vocabulary",
-        details: words.join(", "),
-      });
-    }
-    for (const p of (parsed.phrases as string[]) ?? []) {
-      flags.push({
-        ruleId: "legacy_phrase",
-        category: "phrase",
-        severity: "warning",
-        action: "flag",
-        message: "AI-tell phrase",
-        details: p,
-      });
-    }
-    for (const s of ((parsed.structureIssues ?? parsed.structure) as string[]) ?? []) {
-      flags.push({
-        ruleId: "legacy_structure",
-        category: "structural",
-        severity: "warning",
-        action: "flag",
-        message: s,
-      });
-    }
-    if (parsed.markdownStripped) {
-      flags.push({
-        ruleId: "struct_markdown_leak",
-        category: "structural",
-        severity: "info",
-        action: "auto_strip",
-        message: "Markdown formatting stripped",
-      });
-    }
-    return { flags, voice };
-  } catch {
-    return { flags: [], voice: [] };
-  }
-}
-
-// Renders the fact-check flag's details as a multi-line claim list. The
-// verifier produces a pipe-separated string ("Claim: 'X'. Source says: Y. |
-// Claim: '...'. Source says: ..."); we split it back out so each claim sits
-// on its own line under an explanatory line. Highest-signal flag in the
-// banner — the user is likely to act on it.
-function FactCheckFlagBody({ details }: { details?: string }) {
-  const claims = (details ?? "")
-    .split(" | ")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return (
-    <div>
-      <p className="font-medium">Possible unsupported claims found</p>
-      <p className="mt-0.5 text-[#A16207]">
-        These specific claims may not be supported by the source. Review and edit if needed.
-      </p>
-      {claims.length > 0 ? (
-        <ul className="mt-1 space-y-0.5 pl-3">
-          {claims.map((claim, i) => (
-            <li key={i} className="list-[circle]">
-              {claim}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 type PersonalizationMetadata = {
   mode: "targeted" | "no_fit" | "legacy_raw_context";
   componentUsed: string | null;
@@ -179,22 +81,22 @@ function PersonalizationNotice({ meta }: { meta: PersonalizationMetadata }) {
         ? `${meta.componentUsed.slice(0, 80)}…`
         : meta.componentUsed;
     return (
-      <p className="text-[11px] text-[#6B7280]">
-        Personalized using: <span className="text-[#374151]">{truncated}</span>
+      <p className="text-[12px] text-ink-3">
+        Personalized using: <span className="text-ink-2">{truncated}</span>
       </p>
     );
   }
   if (meta.mode === "no_fit") {
     return (
-      <p className="text-[11px] text-[#6B7280]">
+      <p className="text-[12px] text-ink-3">
         No personal experience fit this topic. Personalized for tone.
       </p>
     );
   }
   return (
-    <p className="text-[11px] text-[#6B7280]">
+    <p className="text-[12px] text-ink-3">
       Personalized for tone. Add more specific experiences in{" "}
-      <a href="/settings" className="text-[#2563EB] hover:underline">
+      <a href="/settings" className="link-rule text-ink">
         settings
       </a>{" "}
       to enable targeted personalization.
@@ -355,121 +257,94 @@ export default function DraftCard({
   const warningFlags = aiParsed.flags.filter((f) => f.severity === "warning");
   const infoFlags = aiParsed.flags.filter((f) => f.severity === "info");
   const hasWarnings = warningFlags.length > 0 || aiParsed.voice.length > 0;
-  const hasInfo = infoFlags.length > 0;
-  const hasAnyFlag = hasWarnings || hasInfo;
+  const hasAnyFlag = hasWarnings || infoFlags.length > 0;
   const showRegenHint = currentDraft.regenerationCount > 0 && hasAnyFlag;
   const previewText = editedText || currentDraft.draftText;
   const isNearExpiry = isNearStale(draft.staleAfter);
 
   return (
-    <article className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.07),0_1px_2px_-1px_rgb(0_0_0/0.07)] transition-shadow hover:shadow-[0_4px_6px_-1px_rgb(0_0_0/0.07)]">
-      <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-[#FAFAFA] px-4 py-3">
+    <article className="overflow-hidden rounded-[10px] border-2 border-ink bg-surface shadow-card">
+      <div className="flex items-center justify-between gap-3 border-b-2 border-ink bg-paper px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           {currentDraft.seriesId ? (
             <a
               href={`/projects/${currentDraft.seriesId}`}
-              className="inline-flex items-center gap-1 rounded-full border border-[#E5E7EB] bg-white px-2 py-0.5 text-[11px] font-medium text-[#6B7280] transition-colors hover:bg-[#F3F4F6]"
+              className="inline-flex"
               onClick={(e) => e.stopPropagation()}
             >
-              <FolderKanban className="h-2.5 w-2.5" />
-              {currentDraft.seriesTitle
-                ? `${currentDraft.seriesTitle.slice(0, 20)}${currentDraft.seriesTitle.length > 20 ? "…" : ""}`
-                : "Project"}
-              {currentDraft.seriesPosition ? ` · #${currentDraft.seriesPosition}` : ""}
+              <Chip tone="surface" size="sm" interactive>
+                <FolderKanban className="size-3" />
+                {currentDraft.seriesTitle
+                  ? `${currentDraft.seriesTitle.slice(0, 20)}${currentDraft.seriesTitle.length > 20 ? "…" : ""}`
+                  : "Project"}
+                {currentDraft.seriesPosition ? ` · #${currentDraft.seriesPosition}` : ""}
+              </Chip>
             </a>
           ) : null}
 
           {currentDraft.topicLabel ? (
-            <span className="rounded-full border border-[#E5E7EB] bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280]">
+            <Chip tone="blue" size="sm">
               {currentDraft.topicLabel}
-            </span>
+            </Chip>
           ) : null}
 
           {currentDraft.voiceScore != null ? (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                currentDraft.voiceScore >= 8 && "border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]",
-                currentDraft.voiceScore >= 5 &&
-                  currentDraft.voiceScore < 8 &&
-                  "border-[#FDE68A] bg-[#FFFBEB] text-[#D97706]",
-                currentDraft.voiceScore < 5 && "border-[#FECACA] bg-[#FEF2F2] text-[#DC2626]"
-              )}
+            <Badge
+              variant={
+                currentDraft.voiceScore >= 8
+                  ? "success"
+                  : currentDraft.voiceScore >= 5
+                    ? "warning"
+                    : "flagged"
+              }
+              className="h-6 gap-1.5 px-2.5"
             >
-              <Mic className="h-2.5 w-2.5" />
+              <Mic className="size-3" />
               Voice {currentDraft.voiceScore}/10
-            </span>
+            </Badge>
           ) : null}
 
           {hasWarnings ? (
-            <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] bg-[#FFFBEB] px-2 py-0.5 text-[11px] font-medium text-[#D97706]">
-              <AlertTriangle className="h-2.5 w-2.5" />
+            <Badge variant="warning" className="h-6 gap-1.5 px-2.5">
+              <AlertTriangle className="size-3" />
               {warningFlags.length + aiParsed.voice.length} flag{warningFlags.length + aiParsed.voice.length === 1 ? "" : "s"} to review
-            </span>
+            </Badge>
           ) : null}
 
-          <span className="text-[11px] text-[#9CA3AF]">{age}</span>
+          <span className="text-[12px] text-ink-3">{age}</span>
           {currentDraft.regenerationCount > 0 ? (
-            <span className="text-[11px] text-[#9CA3AF]">Regenerated {currentDraft.regenerationCount}×</span>
+            <span className="text-[12px] text-ink-3">Regenerated {currentDraft.regenerationCount}×</span>
           ) : null}
-          {isNearExpiry ? <span className="text-[11px] font-medium text-[#D97706]">· Expires soon</span> : null}
+          {isNearExpiry ? (
+            <Chip variant="dashed" size="sm">
+              Expires soon
+            </Chip>
+          ) : null}
         </div>
 
-        <button className="flex h-7 w-7 items-center justify-center rounded-md text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#374151]">
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
+        <Button variant="ghost" size="icon-sm" aria-label="More actions">
+          <MoreHorizontal className="size-4" />
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 divide-[#E5E7EB] md:grid-cols-2 md:divide-x">
-        <div className="flex flex-col gap-3 p-4">
+      <div className="grid grid-cols-1 divide-hairline md:grid-cols-2 md:divide-x">
+        <div className="flex flex-col gap-4 p-5">
           {currentDraft.seriesContext ? (
             <Collapsible>
-              <CollapsibleTrigger className="flex items-center gap-1 text-[12px] text-[#6B7280] transition-colors hover:text-[#111827]">
-                <ChevronRight className="h-3 w-3 transition-transform [[data-state=open]_&]:rotate-90" />
+              <CollapsibleTrigger className="flex items-center gap-1 text-[12px] text-ink-2 transition-colors hover:text-ink">
+                <ChevronRight className="size-3 transition-transform [[data-state=open]_&]:rotate-90" />
                 Continuing from post #{Math.max(1, (currentDraft.seriesPosition ?? 1) - 1)}
               </CollapsibleTrigger>
-              <CollapsibleContent className="mt-1 border-l-2 border-[#E5E7EB] py-1 pl-3 text-[12px] italic text-[#6B7280]">
+              <CollapsibleContent className="mt-1 border-l-2 border-hairline py-1 pl-3 text-[12px] italic text-ink-2">
                 {currentDraft.seriesContext}
               </CollapsibleContent>
             </Collapsible>
           ) : null}
 
-          {hasWarnings ? (
-            <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-[12px] text-[#92400E]">
-              <div className="mb-1.5 flex items-center gap-1.5 font-medium text-[#B45309]">
-                <AlertTriangle className="h-3 w-3" />
-                Quality scan — review before approving
-              </div>
-              <ul className="space-y-1 pl-4">
-                {warningFlags.map((f, i) => (
-                  <li key={`${f.ruleId}-${i}`} className="list-disc">
-                    {f.ruleId === "fact_check_unsupported_claims" ? (
-                      <FactCheckFlagBody details={f.details} />
-                    ) : f.details ? (
-                      <>
-                        <span className="font-medium">{f.message}:</span> {f.details}
-                      </>
-                    ) : (
-                      f.message
-                    )}
-                  </li>
-                ))}
-                {aiParsed.voice.map((v, i) => (
-                  <li key={`voice-${i}`} className="list-disc">
-                    <span className="font-medium">Voice:</span> {v}
-                  </li>
-                ))}
-              </ul>
-              {showRegenHint ? (
-                <p className="mt-2 text-[11px] text-[#A16207]">
-                  Re-scanned with current rules — flags may differ from the original.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+          <QualityFlags aiTellFlags={currentDraft.aiTellFlags ?? null} showRescanNote={showRegenHint} />
 
           <textarea
-            className="min-h-[180px] w-full resize-none border-0 bg-transparent text-[13.5px] leading-relaxed text-[#111827] outline-none placeholder:text-[#9CA3AF]"
+            className="min-h-[220px] w-full resize-none border-0 bg-transparent text-[15px] leading-[1.65] text-ink outline-none placeholder:text-ink-3"
             value={editedText}
             onChange={(e) => {
               setIsEditing(true);
@@ -483,9 +358,9 @@ export default function DraftCard({
               href={draft.sourceUrls[0]}
               target="_blank"
               rel="noopener noreferrer"
-              className="group inline-flex items-center gap-1.5 text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB]"
+              className="group inline-flex items-center gap-1.5 self-start text-[12px] text-ink-2 transition-colors hover:text-accent-solid"
             >
-              <ExternalLink className="h-3 w-3 group-hover:text-[#2563EB]" />
+              <ExternalLink className="size-3" />
               {draft.sourceUrls[0].includes("tavily")
                 ? "Source article"
                 : (() => {
@@ -498,40 +373,42 @@ export default function DraftCard({
             </a>
           ) : null}
 
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             <div className="flex gap-2">
-              <input
+              <Input
                 value={regenInstruction}
                 onChange={(e) => setRegenInstruction(e.target.value)}
                 placeholder="Regeneration instruction (optional)..."
                 maxLength={300}
-                className="h-8 flex-1 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-3 text-[12px] text-[#374151] placeholder:text-[#9CA3AF] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                className="h-9 flex-1 text-[13px]"
                 onKeyDown={(e) => e.key === "Enter" && regenInstruction && !isRegenerating && handleRegenerate()}
               />
-              <button
+              <Button
+                variant="outline"
                 onClick={handleRegenerate}
                 disabled={!regenInstruction || isRegenerating}
-                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
               >
-                {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {isRegenerating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 Regenerate
-              </button>
+              </Button>
             </div>
-            <p className="text-right text-[11px] tabular-nums text-[#9CA3AF]">{regenInstruction.length} / 300</p>
+            <p className="eyebrow text-right tabular-nums text-ink-3">{regenInstruction.length} / 300</p>
           </div>
 
           {hasPersonalization ? (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handlePersonalize}
               disabled={isPersonalizing}
-              className="inline-flex items-center gap-1.5 self-start text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB] disabled:opacity-50"
+              className="-ml-3 self-start"
             >
-              {isPersonalizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {isPersonalizing ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               {isPersonalizing ? "Adding personal angle..." : "Add personal angle"}
-            </button>
+            </Button>
           ) : (
-            <p className="self-start text-[11px] text-[#9CA3AF]">
-              <a href="/settings" className="text-[#2563EB] hover:underline">
+            <p className="self-start text-[12px] text-ink-3">
+              <a href="/settings" className="link-rule text-ink">
                 Add personal experiences
               </a>{" "}
               in settings to enable personalization on drafts.
@@ -542,141 +419,133 @@ export default function DraftCard({
           ) : null}
         </div>
 
-        <div className="border-t border-[#E5E7EB] bg-[#F7F7F7] p-4 md:border-t-0">
-          <button
-            className="mb-3 flex w-full items-center justify-between rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[12px] font-medium text-[#374151] md:hidden"
+        <div className="border-t-2 border-ink bg-paper-sunk p-5 md:border-t-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="mb-3 w-full justify-between md:hidden"
             onClick={() => setShowPreviewMobile((prev) => !prev)}
           >
             Show LinkedIn preview
-            <ChevronDown className={cn("h-4 w-4 transition-transform", showPreviewMobile && "rotate-180")} />
-          </button>
+            <ChevronDown className={cn("size-4 transition-transform", showPreviewMobile && "rotate-180")} />
+          </Button>
 
           <div className={cn("hidden md:block", showPreviewMobile && "block")}>
-            <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-[#9CA3AF]">LinkedIn Preview</p>
+            <p className="eyebrow mb-3 text-ink-3">LinkedIn Preview</p>
             <LinkedInPreview text={previewText} />
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2.5 border-t border-[#E5E7EB] bg-[#FAFAFA] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#E5E7EB]">
+      <div className="flex flex-col gap-3 border-t-2 border-ink bg-paper px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="h-3 flex-1 overflow-hidden rounded-full border-2 border-ink bg-surface">
             <div
               className={cn(
-                "h-full rounded-full transition-all",
-                charCount / 3000 < 0.8 && "bg-[#16A34A]",
-                charCount / 3000 >= 0.8 && charCount / 3000 < 1 && "bg-[#D97706]",
-                charCount / 3000 >= 1 && "bg-[#DC2626]"
+                "h-full transition-all",
+                charCount / 3000 < 0.8 && "bg-p-sage",
+                charCount / 3000 >= 0.8 && charCount / 3000 < 1 && "bg-p-amber",
+                charCount / 3000 >= 1 && "bg-p-coral"
               )}
               style={{ width: `${Math.min((charCount / 3000) * 100, 100)}%` }}
             />
           </div>
-          <span className={cn("text-[11px] font-medium tabular-nums", charCount > 3000 ? "text-[#DC2626]" : "text-[#9CA3AF]")}>
+          <span
+            className={cn(
+              "eyebrow tabular-nums",
+              charCount > 3000 ? "rounded-full border-2 border-ink bg-p-coral px-2 text-ink" : "text-ink-3"
+            )}
+          >
             {charCount}/3000
           </span>
         </div>
 
         {currentDraft.hashtags && currentDraft.hashtags.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {currentDraft.hashtags.map((tag) => (
-              <span key={tag} className="rounded bg-[#EFF6FF] px-1.5 py-0.5 text-[11px] text-[#2563EB]">
+              <Chip key={tag} tone="accent" size="sm">
                 {tag.startsWith("#") ? tag : `#${tag}`}
-              </span>
+              </Chip>
             ))}
           </div>
         ) : null}
 
-        {hasInfo ? (
-          <ul className="space-y-0.5 text-[11px] text-[#6B7280]">
-            {infoFlags.map((f, i) => (
-              <li key={`${f.ruleId}-${i}`}>
-                <span className="font-medium text-[#374151]">Auto-cleaned:</span> {f.details ?? f.message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
         <div className="flex items-center justify-between gap-2 pt-0.5">
-          <button
+          <Button
+            variant="outline"
             onClick={() => setShowRejectModal(true)}
-            className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#6B7280] transition-colors hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+            className="hover:bg-p-coral hover:text-ink"
           >
             Reject
-          </button>
+          </Button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {isEditing ? (
-              <button
-                onClick={handleSaveEdits}
-                className="h-8 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6]"
-              >
+              <Button variant="secondary" onClick={handleSaveEdits}>
                 Save edits
-              </button>
+              </Button>
             ) : null}
             <Popover open={showScheduler} onOpenChange={setShowScheduler}>
               <PopoverTrigger asChild>
-                <button
-                  disabled={isApproving || charCount > 3000}
-                  className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <Button disabled={isApproving || charCount > 3000}>
                   {isApproving ? (
                     <>
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Loader2 className="size-3.5 animate-spin" />
                       Scheduling...
                     </>
                   ) : (
                     <>
-                      <Check className="h-3 w-3" />
+                      <Check className="size-3.5" />
                       Approve & Schedule
                     </>
                   )}
-                </button>
+                </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-[320px] space-y-3 p-4">
-                <p className="text-[13px] font-medium text-[#111827]">Schedule this post</p>
+                <p className="text-[14px] font-semibold text-ink">Schedule this post</p>
                 <div className="space-y-2">
-                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-[#E5E7EB] p-2.5 text-[12px]">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border-2 border-ink bg-surface p-2.5 text-[12px] transition-colors has-checked:bg-accent-tint">
                     <input
                       type="radio"
                       checked={!useCustomTime}
                       onChange={() => setUseCustomTime(false)}
-                      className="mt-0.5"
+                      className="mt-0.5 accent-accent-solid"
                     />
                     <div>
-                      <p className="font-medium text-[#111827]">Next preferred slot</p>
-                      <p className="text-[#6B7280]">{nextPreferredLabel}</p>
+                      <p className="font-medium text-ink">Next preferred slot</p>
+                      <p className="text-ink-2">{nextPreferredLabel}</p>
                     </div>
                   </label>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-[#E5E7EB] p-2.5 text-[12px]">
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border-2 border-ink bg-surface p-2.5 text-[12px] transition-colors has-checked:bg-accent-tint">
                     <input
                       type="radio"
                       checked={useCustomTime}
                       onChange={() => setUseCustomTime(true)}
-                      className="mt-0.5"
+                      className="mt-0.5 accent-accent-solid"
                     />
                     <div className="w-full space-y-2">
-                      <p className="font-medium text-[#111827]">Pick a date and time</p>
+                      <p className="font-medium text-ink">Pick a date and time</p>
                       <div className="grid grid-cols-2 gap-2">
-                        <input
+                        <Input
                           type="date"
                           value={customDate}
                           onChange={(e) => setCustomDate(e.target.value)}
                           disabled={!useCustomTime}
-                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                          className="h-8 px-2 text-[12px]"
                         />
-                        <input
+                        <Input
                           type="time"
                           value={customTime}
                           onChange={(e) => setCustomTime(e.target.value)}
                           disabled={!useCustomTime}
-                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                          className="h-8 px-2 text-[12px]"
                         />
                       </div>
                       <select
                         value={schedulingTimezone}
                         onChange={(e) => setSchedulingTimezone(e.target.value)}
                         disabled={!useCustomTime}
-                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] disabled:opacity-60"
+                        className="h-8 w-full rounded-[10px] border-2 border-ink bg-surface px-2 text-[12px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent-solid disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="UTC">UTC</option>
                         <option value="America/New_York">America/New_York</option>
@@ -690,22 +559,13 @@ export default function DraftCard({
                   </label>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowScheduler(false)}
-                    className="h-8 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
-                  >
+                  <Button type="button" variant="outline" onClick={() => setShowScheduler(false)}>
                     Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmSchedule}
-                    disabled={isApproving}
-                    className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-50"
-                  >
-                    {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  </Button>
+                  <Button type="button" onClick={handleConfirmSchedule} disabled={isApproving}>
+                    {isApproving ? <Loader2 className="size-3.5 animate-spin" /> : null}
                     Confirm & Schedule
-                  </button>
+                  </Button>
                 </div>
               </PopoverContent>
             </Popover>

@@ -1,11 +1,25 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
-import { Inter } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
+import { Archivo, Geist, Geist_Mono, Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import AppShell from "@/components/layout/AppShell";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+// Display face. The `wdth` axis must be declared or `font-stretch: 125%` — the
+// thing that gives the headlines their wide, dense look — silently does nothing.
+const archivo = Archivo({
+  subsets: ["latin"],
+  variable: "--font-archivo",
+  axes: ["wdth"],
+  display: "swap",
+});
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
+
+// Kept as a fallback for any screen still on the pre-overhaul styling.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Voce",
@@ -18,10 +32,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={cn("h-full", "font-sans", inter.variable)}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={cn(
+        "h-full font-sans",
+        archivo.variable,
+        geist.variable,
+        geistMono.variable,
+        inter.variable,
+      )}
+    >
       <body className="h-full antialiased">
         <ToastProvider>
           <AppShell>{children}</AppShell>
+          <Toaster />
         </ToastProvider>
       </body>
     </html>

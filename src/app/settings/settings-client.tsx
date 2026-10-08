@@ -9,6 +9,13 @@ import { useToast } from "@/components/Toast";
 import { SchedulingForm, type SchedulingSettings } from "@/components/SchedulingForm";
 import { addBannedWord, removeBannedWord } from "@/lib/banned-words-helpers";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Chip, chipVariants } from "@/components/ui/chip";
 
 interface LinkedInTokenView {
   status: "active" | "expired" | string;
@@ -123,15 +130,15 @@ function HookStyleVoiceRow({
   };
 
   return (
-    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-[#FAFAFA]">
-      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-[#9CA3AF]">How you open posts</span>
+    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-paper-sunk">
+      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-ink-2">How you open posts</span>
       <div className="min-w-0 flex-1">
         {editing ? (
           <div className="space-y-1.5">
             <select
               value={preset}
               onChange={(e) => setPreset(e.target.value)}
-              className="w-full rounded-md border border-[#2563EB] bg-white px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+              className="h-8 w-full rounded-[10px] border-2 border-ink bg-surface px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent-solid"
             >
               {HOOK_STYLE_PRESET_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -141,29 +148,31 @@ function HookStyleVoiceRow({
               <option value="__custom__">Custom (free text)</option>
             </select>
             {preset === "__custom__" ? (
-              <input
+              <Input
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
                 placeholder="Describe how you usually open posts"
-                className="w-full rounded-md border border-[#2563EB] px-2 py-1 text-[13px] text-[#374151] outline-none"
+                className="h-8 px-2 text-[13px]"
                 autoFocus
               />
             ) : null}
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={async () => {
                   const v = preset === "__custom__" ? customText.trim() : preset;
                   await onSave(v);
                   setEditing(false);
                 }}
-                className="text-[11px] font-medium text-[#2563EB]"
+                className="font-medium text-accent-solid"
               >
                 Save
-              </button>
-              <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-[#9CA3AF]">
+              </Button>
+              <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -171,18 +180,20 @@ function HookStyleVoiceRow({
             <span
               className={cn(
                 "text-[13px] leading-relaxed",
-                hookStyle ? "text-[#374151]" : "text-[#9CA3AF]",
+                hookStyle ? "text-ink" : "text-ink-3",
               )}
             >
               {formatHookStyle(hookStyle)}
             </span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={startEdit}
-              className="flex-shrink-0 text-[11px] text-[#9CA3AF] opacity-0 transition-opacity hover:text-[#2563EB] group-hover:opacity-100"
+              className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
             >
               Edit
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -227,11 +238,7 @@ function ExportButton() {
   }
 
   return (
-    <button
-      onClick={handleExport}
-      disabled={loading}
-      className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F9FAFB] disabled:opacity-50"
-    >
+    <Button variant="outline" onClick={handleExport} disabled={loading} className="shrink-0">
       <span className="flex items-center gap-1.5">
         {loading ? (
           <>
@@ -245,7 +252,7 @@ function ExportButton() {
           </>
         )}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -284,75 +291,71 @@ function BillingCard({ subscription }: { subscription: SettingsSubscriptionSnaps
 
   const pill =
     status === "trialing" ? (
-      <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-[12px] font-medium text-green-800">
+      <Badge variant="success">
         Free trial
         {trialDays != null ? ` · ${trialDays} day${trialDays === 1 ? "" : "s"} remaining` : ""}
-      </span>
+      </Badge>
     ) : status === "active" ? (
-      <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-[12px] font-medium text-green-800">
-        Active — $10/month
-      </span>
+      <Badge variant="success">Active — $10/month</Badge>
     ) : status === "past_due" ? (
-      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-[12px] font-medium text-amber-900">
-        Payment failed
-      </span>
+      <Badge variant="warning">Payment failed</Badge>
     ) : (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-[12px] font-medium text-red-800">
-        No active plan
-      </span>
+      <Badge variant="flagged">No active plan</Badge>
     );
 
   const cta =
     status === "past_due" ? (
-      <button
+      <Button
         type="button"
+        size="sm"
         disabled={loading !== null}
         onClick={() => void postBilling("/api/billing/portal", "portal")}
-        className="flex h-8 items-center gap-1.5 rounded-md bg-amber-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+        className="bg-p-amber text-ink hover:bg-p-amber"
       >
         {loading === "portal" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         Update payment method
-      </button>
+      </Button>
     ) : status === "trialing" || status === "active" ? (
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         disabled={loading !== null}
         onClick={() => void postBilling("/api/billing/portal", "portal")}
-        className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F9FAFB] disabled:opacity-50"
       >
         {loading === "portal" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         Manage subscription
-      </button>
+      </Button>
     ) : (
-      <button
+      <Button
         type="button"
+        size="sm"
         disabled={loading !== null}
         onClick={() => void postBilling("/api/billing/checkout", "checkout")}
-        className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-50"
       >
         {loading === "checkout" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         Start free trial
-      </button>
+      </Button>
     );
 
   return (
-    <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+    <div className="rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[14px] font-medium text-[#111827]">Billing</h3>
+            <h3 className="font-display text-[15px] font-bold text-ink">Billing</h3>
             {pill}
           </div>
           {status === "past_due" ? (
-            <p className="text-[13px] text-[#92400E]">Update your card to restore full access.</p>
+            <p className="text-[13px] font-medium text-ink">Update your card to restore full access.</p>
           ) : status === "trialing" || status === "active" ? (
-            <p className="text-[13px] text-[#6B7280]">
+            <p className="text-[13px] text-ink-2">
               {status === "trialing"
                 ? "Your trial includes full generation and publishing. Cancel anytime from the portal."
                 : "You're on the Voce monthly plan."}
             </p>
           ) : (
-            <p className="text-[13px] text-[#6B7280]">
+            <p className="text-[13px] text-ink-2">
               Start a 14-day free trial, then $10/month. Generation and publishing require an active trial or subscription.
             </p>
           )}
@@ -386,18 +389,11 @@ function DeleteAccountButton() {
   if (confirming) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <p className="text-[13px] font-medium text-[#DC2626]">Are you sure? This cannot be undone.</p>
-        <button
-          onClick={() => setConfirming(false)}
-          className="h-8 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F9FAFB]"
-        >
+        <p className="text-[13px] font-medium text-destructive">Are you sure? This cannot be undone.</p>
+        <Button variant="outline" size="sm" onClick={() => setConfirming(false)}>
           Cancel
-        </button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>
           <span className="flex items-center gap-1.5">
             {deleting ? (
               <>
@@ -408,18 +404,15 @@ function DeleteAccountButton() {
               "Yes, delete my account"
             )}
           </span>
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <button
-      onClick={() => setConfirming(true)}
-      className="h-8 rounded-md border border-[#FECACA] px-3 text-[12px] font-medium text-[#DC2626] transition-colors hover:bg-[#FEF2F2]"
-    >
+    <Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
       Delete account
-    </button>
+    </Button>
   );
 }
 
@@ -449,8 +442,8 @@ function VoiceRow({
   }, [value, selectOptions]);
 
   return (
-    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-[#FAFAFA]">
-      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-[#9CA3AF]">{label}</span>
+    <div className="group flex items-start gap-4 px-4 py-3 transition-colors hover:bg-paper-sunk">
+      <span className="w-36 flex-shrink-0 pt-0.5 text-[12px] font-medium text-ink-2">{label}</span>
       <div className="min-w-0 flex-1">
         {editing && editable && onEdit ? (
           <div className="space-y-1.5">
@@ -458,7 +451,7 @@ function VoiceRow({
               <select
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full rounded-md border border-[#2563EB] bg-white px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+                className="h-8 w-full rounded-[10px] border-2 border-ink bg-surface px-2 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent-solid"
                 autoFocus
               >
                 {selectOptions.map((o) => (
@@ -468,49 +461,53 @@ function VoiceRow({
                 ))}
               </select>
             ) : multiline ? (
-              <textarea
+              <Textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 rows={3}
-                className="w-full resize-none rounded-md border border-[#2563EB] px-2 py-1.5 text-[13px] text-[#374151] outline-none"
+                className="min-h-[72px] resize-none px-2 py-1.5 text-[13px]"
                 autoFocus
               />
             ) : (
-              <input
+              <Input
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full rounded-md border border-[#2563EB] px-2 py-1 text-[13px] text-[#374151] outline-none"
+                className="h-8 px-2 text-[13px]"
                 autoFocus
               />
             )}
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={async () => {
                   await onEdit(editValue);
                   setEditing(false);
                 }}
-                className="text-[11px] font-medium text-[#2563EB]"
+                className="font-medium text-accent-solid"
               >
                 Save
-              </button>
-              <button type="button" onClick={() => setEditing(false)} className="text-[11px] text-[#9CA3AF]">
+              </Button>
+              <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
           <div className="flex items-start justify-between gap-2">
             {typeof value === "string" ? (
-              <span className="text-[13px] leading-relaxed text-[#374151]">
-                {value || <span className="text-[#9CA3AF]">Not detected</span>}
+              <span className="text-[13px] leading-relaxed text-ink">
+                {value || <span className="text-ink-3">Not detected</span>}
               </span>
             ) : (
               value
             )}
             {editable && onEdit ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => {
                   if (selectOptions?.length) {
                     setEditValue(selectValue ?? selectOptions[0]?.value ?? "");
@@ -519,10 +516,10 @@ function VoiceRow({
                   }
                   setEditing(true);
                 }}
-                className="flex-shrink-0 text-[11px] text-[#9CA3AF] opacity-0 transition-opacity hover:text-[#2563EB] group-hover:opacity-100"
+                className="shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
               >
                 Edit
-              </button>
+              </Button>
             ) : null}
           </div>
         )}
@@ -547,7 +544,7 @@ function SourceSuggestionsPanel({
   void topicId;
   if (state.kind === "loading") {
     return (
-      <div className="mt-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3 text-[12px] text-[#6B7280]">
+      <div className="mt-2 rounded-[10px] border border-hairline bg-paper-sunk p-3 text-[12px] text-ink-2">
         <div className="flex items-center gap-2">
           <Loader2 className="h-3 w-3 animate-spin" />
           Looking up sources...
@@ -557,62 +554,55 @@ function SourceSuggestionsPanel({
   }
   if (state.kind === "error") {
     return (
-      <div className="mt-2 rounded-md border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12px] text-[#991B1B]">
+      <div className="mt-2 rounded-[10px] border-2 border-ink bg-[color:var(--status-error-bg)] p-3 text-[12px] text-ink">
         <div className="flex items-start justify-between gap-3">
           <span>{state.message}</span>
-          <button onClick={onDismiss} className="text-[#991B1B] hover:opacity-70">
+          <Button variant="ghost" size="icon-xs" onClick={onDismiss} aria-label="Dismiss">
             <X className="h-3 w-3" />
-          </button>
+          </Button>
         </div>
       </div>
     );
   }
   const selectedCount = state.candidates.filter((c) => state.selected[c.url]).length;
   return (
-    <div className="mt-2 space-y-2 rounded-md border border-[#E5E7EB] bg-[#FAFAFA] p-3">
+    <div className="mt-2 space-y-2 rounded-[10px] border border-hairline bg-paper-sunk p-3">
       <div className="flex items-center justify-between">
-        <span className="text-[12px] font-medium text-[#111827]">
+        <span className="text-[12px] font-medium text-ink">
           Suggested sources ({state.candidates.length})
         </span>
         {state.stats ? (
-          <span className="text-[11px] text-[#9CA3AF]">
+          <span className="text-[11px] text-ink-3">
             {state.stats.validated}/{state.stats.requested} validated
           </span>
         ) : null}
       </div>
       <div className="space-y-1.5">
         {state.candidates.map((c) => (
-          <label key={c.url} className="flex items-start gap-2 text-[12px] text-[#374151]">
+          <label key={c.url} className="flex items-start gap-2 text-[12px] text-ink">
             <input
               type="checkbox"
               checked={Boolean(state.selected[c.url])}
               onChange={() => onToggle(c.url)}
-              className="mt-0.5"
+              className="mt-0.5 accent-accent-solid"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="font-medium text-[#111827]">{c.name}</span>
-                <span className="truncate text-[11px] text-[#6B7280]">{c.url}</span>
+                <span className="font-medium text-ink">{c.name}</span>
+                <span className="truncate text-[11px] text-ink-2">{c.url}</span>
               </div>
-              {c.why ? <p className="text-[11px] text-[#6B7280]">{c.why}</p> : null}
+              {c.why ? <p className="text-[11px] text-ink-2">{c.why}</p> : null}
             </div>
           </label>
         ))}
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
-        <button
-          onClick={onDismiss}
-          className="h-7 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#6B7280] hover:bg-[#F3F4F6]"
-        >
+        <Button variant="outline" size="sm" onClick={onDismiss}>
           Cancel
-        </button>
-        <button
-          onClick={onApply}
-          disabled={selectedCount === 0}
-          className="h-7 rounded-md bg-[#2563EB] px-3 text-[12px] font-medium text-white hover:bg-[#1D4ED8] disabled:opacity-50"
-        >
+        </Button>
+        <Button size="sm" onClick={onApply} disabled={selectedCount === 0}>
           Add {selectedCount > 0 ? `${selectedCount} ` : ""}selected
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1215,23 +1205,23 @@ export default function SettingsClient({ subscription }: { subscription: Setting
 
   const calibrationUi =
     calibrationQuality === "full"
-      ? { label: "FULL ✓", className: "bg-green-100 text-green-700", nudge: "Voice fully calibrated. Add posts anytime to keep it current." }
+      ? { label: "FULL ✓", variant: "success" as const, nudge: "Voice fully calibrated. Add posts anytime to keep it current." }
       : calibrationQuality === "mostly"
-        ? { label: "MOSTLY ◐", className: "bg-amber-100 text-amber-700", nudge: "Almost there - add 1-2 more posts to reach full calibration." }
+        ? { label: "MOSTLY ◐", variant: "warning" as const, nudge: "Almost there - add 1-2 more posts to reach full calibration." }
         : calibrationQuality === "partial"
-          ? { label: "PARTIAL ◑", className: "bg-amber-100 text-amber-700", nudge: "Add more posts for better accuracy. 8+ posts recommended." }
-          : { label: "UNCALIBRATED ○", className: "bg-red-100 text-red-700", nudge: "Add at least 3 posts to start calibrating your voice." };
+          ? { label: "PARTIAL ◑", variant: "warning" as const, nudge: "Add more posts for better accuracy. 8+ posts recommended." }
+          : { label: "UNCALIBRATED ○", variant: "flagged" as const, nudge: "Add at least 3 posts to start calibrating your voice." };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-[22px] font-semibold text-[#111827]">Settings</h1>
-        <p className="mt-0.5 text-[13px] text-[#6B7280]">Manage voice, topics, scheduling, and LinkedIn connection</p>
+        <h1 className="display-3 text-ink">Settings</h1>
+        <p className="mt-0.5 text-[13px] text-ink-2">Manage voice, topics, scheduling, and LinkedIn connection</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[180px_1fr]">
         <nav className="sticky top-6 hidden self-start lg:block">
-          <div className="space-y-1 rounded-lg border border-[#E5E7EB] bg-white p-2 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+          <div className="space-y-1 rounded-[10px] border-2 border-ink bg-surface p-2 shadow-nav">
             {[
               { id: "voice", label: "Voice Profile" },
               { id: "topics", label: "Topics" },
@@ -1244,10 +1234,10 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                 key={item.id}
                 href={`#${item.id}`}
                 className={cn(
-                  "block rounded-md px-3 py-1.5 text-[13px] transition-colors",
+                  "block rounded-md border-2 px-3 py-1.5 text-[13px] transition-colors",
                   activeSection === item.id
-                    ? "bg-[#EFF6FF] font-medium text-[#2563EB]"
-                    : "text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]",
+                    ? "border-ink bg-p-blue font-medium text-ink"
+                    : "border-transparent text-ink-2 hover:bg-paper-sunk hover:text-ink",
                 )}
               >
                 {item.label}
@@ -1258,51 +1248,46 @@ export default function SettingsClient({ subscription }: { subscription: Setting
 
         <div className="space-y-8">
           <section id="voice" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">Voice Profile</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">How your posts should sound</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">Voice Profile</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">How your posts should sound</p>
             </div>
 
-            <div className="space-y-5 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
-              <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3">
+            <div className="space-y-5 rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
+              <div className="flex items-center justify-between rounded-[10px] border border-hairline bg-paper-sunk p-3">
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      calibrationQuality === "full" && "bg-[#16A34A]",
-                      (calibrationQuality === "mostly" || calibrationQuality === "partial") && "bg-[#D97706]",
-                      calibrationQuality === "uncalibrated" && "bg-[#DC2626]",
-                    )}
-                  />
-                  <span className="text-[13px] font-medium text-[#111827]">Voice {calibrationUi.label}</span>
-                  <span className="text-[12px] text-[#6B7280]">
+                  <span className="text-[13px] font-medium text-ink">Voice</span>
+                  <Badge variant={calibrationUi.variant}>{calibrationUi.label}</Badge>
+                  <span className="text-[12px] text-ink-2">
                     {sampleCount} sample post{sampleCount !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <span className="hidden text-[12px] text-[#6B7280] md:block">{calibrationUi.nudge}</span>
+                <span className="hidden text-[12px] text-ink-2 md:block">{calibrationUi.nudge}</span>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-[13px] font-medium text-[#374151]">Sample posts</label>
-                  <p className="text-[12px] text-[#9CA3AF]">
+                  <Label className="text-[13px] text-ink">Sample posts</Label>
+                  <p className="text-[12px] text-ink-3">
                     Add your best LinkedIn posts. The more you add, the more accurate your voice profile.
                   </p>
                 </div>
                 <div className="space-y-3">
                   {samplePosts.map((post, index) => (
-                    <div key={index} className="overflow-hidden rounded-lg border border-[#E5E7EB] bg-white">
-                      <div className="flex items-center justify-between border-b border-[#E5E7EB] bg-[#FAFAFA] px-3 py-2">
-                        <span className="text-[12px] font-medium text-[#6B7280]">Post {index + 1}</span>
+                    <div key={index} className="overflow-hidden rounded-[10px] border-2 border-ink bg-surface focus-within:ring-2 focus-within:ring-accent-solid">
+                      <div className="flex items-center justify-between border-b border-hairline bg-paper-sunk px-3 py-1.5">
+                        <span className="eyebrow text-ink-2">Post {index + 1}</span>
                         {samplePosts.length > 1 ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon-xs"
                             onClick={() => removePost(index)}
-                            className="text-[#9CA3AF] transition-colors hover:text-[#DC2626]"
+                            className="hover:text-destructive"
                             aria-label={`Remove post ${index + 1}`}
                           >
                             <X className="h-3.5 w-3.5" />
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
                       <textarea
@@ -1311,25 +1296,25 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                         placeholder="Paste your LinkedIn post here..."
                         rows={4}
                         maxLength={3000}
-                        className="w-full resize-none border-0 bg-white px-3 py-2.5 text-[13px] leading-relaxed text-[#374151] outline-none placeholder:text-[#9CA3AF]"
+                        className="w-full resize-none border-0 bg-surface px-3 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-ink-3"
                       />
                       {post.length > 0 && post.length < 100 ? (
-                        <p className="text-[11px] text-[#D97706] px-3 pb-2">
+                        <p className="px-3 pb-2 text-[11px] font-medium text-ink-2">
                           Post is too short — add more content for better voice extraction
                         </p>
                       ) : null}
-                      <div className="flex items-center justify-between border-t border-[#F3F4F6] bg-[#FAFAFA] px-3 py-1.5">
-                        <span className="text-[11px] text-[#9CA3AF]">
+                      <div className="flex items-center justify-between border-t border-hairline bg-paper-sunk px-3 py-1.5">
+                        <span className="text-[11px] text-ink-3">
                           Plain text only · LinkedIn posts work best
                         </span>
                         <span
                           className={cn(
                             "text-[11px] tabular-nums",
                             post.length > 3000
-                              ? "text-[#DC2626]"
+                              ? "text-destructive"
                               : post.length < 100
-                                ? "text-[#9CA3AF]"
-                                : "text-[#16A34A]",
+                                ? "text-ink-3"
+                                : "text-[color:var(--status-success)]",
                           )}
                         >
                           {post.length} / 3000
@@ -1338,21 +1323,22 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                     </div>
                   ))}
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={addPost}
-                  className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+                  className="w-full gap-2 border-2 border-dashed border-ink text-ink-2"
                 >
                   <Plus className="h-4 w-4" />
                   Add another post
-                </button>
+                </Button>
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2 text-[12px]">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#F3F4F6]">
+                    <div className="h-3 flex-1 overflow-hidden rounded-full border-2 border-ink bg-paper-sunk">
                       <div
                         className={cn(
                           "h-full rounded-full transition-all",
-                          validPostCount >= 8 ? "bg-[#16A34A]" : validPostCount >= 3 ? "bg-[#D97706]" : "bg-[#E5E7EB]",
+                          validPostCount >= 8 ? "bg-p-sage" : validPostCount >= 3 ? "bg-p-amber" : "bg-hairline",
                         )}
                         style={{ width: `${Math.min((validPostCount / 8) * 100, 100)}%` }}
                       />
@@ -1360,21 +1346,21 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                     <span
                       className={cn(
                         "font-medium",
-                        validPostCount >= 8 ? "text-[#16A34A]" : validPostCount >= 3 ? "text-[#D97706]" : "text-[#9CA3AF]",
+                        validPostCount >= 8 ? "text-[color:var(--status-success)]" : validPostCount >= 3 ? "text-ink" : "text-ink-3",
                       )}
                     >
                       {validPostCount} / 8 posts
                     </span>
                   </div>
-                  <p className="text-[12px] text-[#6B7280]">Calibration: {validPostCount} of 8 recommended posts added</p>
+                  <p className="text-[12px] text-ink-2">Calibration: {validPostCount} of 8 recommended posts added</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-medium text-[#374151]">Raw description</label>
-                  <p className="text-[12px] text-[#9CA3AF]">Short plain-English description of your writing style</p>
-                  <textarea
+                  <Label className="text-[13px] text-ink">Raw description</Label>
+                  <p className="text-[12px] text-ink-3">Short plain-English description of your writing style</p>
+                  <Textarea
                     rows={3}
                     maxLength={3000}
                     value={rawDescription}
@@ -1382,13 +1368,13 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       touchedVoiceTextFields.current.rawDescription = true;
                       setRawDescription(e.target.value);
                     }}
-                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    className="min-h-[84px] text-[13.5px]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-medium text-[#374151]">Tone markers</label>
-                  <p className="text-[12px] text-[#9CA3AF]">Comma-separated tone keywords</p>
-                  <input
+                  <Label className="text-[13px] text-ink">Tone markers</Label>
+                  <p className="text-[12px] text-ink-3">Comma-separated tone keywords</p>
+                  <Input
                     value={toneMarkers.join(", ")}
                     onChange={(e) =>
                       setToneMarkers(
@@ -1398,31 +1384,31 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                           .filter(Boolean),
                       )
                     }
-                    className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    className="text-[13.5px]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-medium text-[#374151]">Banned words</label>
-                  <p className="text-[12px] text-[#9CA3AF]">
+                  <Label className="text-[13px] text-ink">Banned words</Label>
+                  <p className="text-[12px] text-ink-3">
                     Banned words match exact form only. Add variants separately (e.g., &quot;leverage&quot;,
                     &quot;leveraging&quot;, &quot;leveraged&quot;).
                   </p>
                   {userBannedWords.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {userBannedWords.map((word, i) => (
-                        <button
+                        <Chip
                           key={`banned-${i}-${word.slice(0, 12)}`}
-                          type="button"
-                          title="Remove"
-                          onClick={() => handleRemoveBannedWord(i)}
-                          className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEE2E2]"
+                          tone="coral"
+                          size="sm"
+                          onRemove={() => handleRemoveBannedWord(i)}
+                          removeLabel={`Remove banned word ${word}`}
                         >
-                          {word} ×
-                        </button>
+                          {word}
+                        </Chip>
                       ))}
                     </div>
                   ) : null}
-                  <input
+                  <Input
                     value={bannedWordDraft}
                     onChange={(e) => setBannedWordDraft(e.target.value)}
                     onKeyDown={(e) => {
@@ -1434,13 +1420,13 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                     placeholder="Add a word or phrase, then press Enter"
                     autoComplete="off"
                     maxLength={50}
-                    className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    className="text-[13.5px]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[13px] font-medium text-[#374151]">User notes</label>
-                  <p className="text-[12px] text-[#9CA3AF]">Additional instructions for style constraints</p>
-                  <textarea
+                  <Label className="text-[13px] text-ink">User notes</Label>
+                  <p className="text-[12px] text-ink-3">Additional instructions for style constraints</p>
+                  <Textarea
                     rows={2}
                     maxLength={500}
                     value={userNotes}
@@ -1448,27 +1434,29 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       touchedVoiceTextFields.current.userNotes = true;
                       setUserNotes(e.target.value);
                     }}
-                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    className="min-h-14 text-[13.5px]"
                   />
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
                   <div className="flex items-center justify-between gap-2">
-                    <label className="text-[13px] font-medium text-[#374151]">Personal context</label>
-                    <button
+                    <Label className="text-[13px] text-ink">Personal context</Label>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="xs"
                       onClick={reExtractPersonalContext}
                       disabled={isReExtracting || !personalContext.trim()}
-                      className="inline-flex items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2 py-0.5 text-[11px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
+                      className="font-medium text-ink"
                     >
                       {isReExtracting ? "Extracting…" : "Re-extract components"}
-                    </button>
+                    </Button>
                   </div>
-                  <p className="text-[12px] text-[#9CA3AF]">
+                  <p className="text-[12px] text-ink-3">
                     Specific, falsifiable experiences (not a generic bio). Examples: &quot;shipped 3 RAG
                     systems last year&quot;, &quot;led security at Stripe 2019-2022&quot;. Specifics power
                     targeted personalization on drafts.
                   </p>
-                  <textarea
+                  <Textarea
                     rows={5}
                     maxLength={1500}
                     value={personalContext}
@@ -1476,27 +1464,28 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       touchedVoiceTextFields.current.personalContext = true;
                       setPersonalContext(e.target.value);
                     }}
-                    className="w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    className="min-h-[120px] text-[13.5px]"
                   />
                   {personalContextComponents.length > 0 ? (
                     <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wider text-[#9CA3AF]">
+                      <p className="eyebrow text-ink-3">
                         Extracted components ({personalContextComponents.length})
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {personalContextComponents.map((component, i) => (
-                          <span
+                          <Chip
                             key={`${i}-${component.slice(0, 20)}`}
-                            className="rounded-full border border-[#E5E7EB] bg-[#F9FAFB] px-2 py-0.5 text-[11px] text-[#6B7280]"
+                            tone="neutral"
+                            size="sm"
                             title={component}
                           >
                             {component.length > 60 ? `${component.slice(0, 60)}…` : component}
-                          </span>
+                          </Chip>
                         ))}
                       </div>
                     </div>
                   ) : personalContext.trim() ? (
-                    <p className="text-[11px] text-[#9CA3AF]">
+                    <p className="text-[11px] text-ink-3">
                       No components extracted yet. Save the profile or click &quot;Re-extract components&quot;.
                     </p>
                   ) : null}
@@ -1506,11 +1495,11 @@ export default function SettingsClient({ subscription }: { subscription: Setting
               {calibrationQuality !== "uncalibrated" ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-[13px] font-semibold text-[#374151]">What we learned about your voice</h3>
-                    <span className="text-[11px] text-[#9CA3AF]">Edit anything that looks wrong</span>
+                    <h3 className="font-display text-[14px] font-bold text-ink">What we learned about your voice</h3>
+                    <span className="text-[11px] text-ink-3">Edit anything that looks wrong</span>
                   </div>
 
-                  <div className="divide-y divide-[#F3F4F6] overflow-hidden rounded-lg border border-[#E5E7EB] bg-white">
+                  <div className="divide-y divide-hairline overflow-hidden rounded-[10px] border-2 border-ink bg-surface">
                     <VoiceRow
                       label="Writing style"
                       value={formatWritingStyle({ avgSentenceLengthWords, avgWordsPerPost, paragraphStyle })}
@@ -1537,17 +1526,17 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       <VoiceRow
                         label="You never..."
                         value={
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {neverPatterns.map((pattern, i) => (
-                              <button
+                              <Chip
                                 key={`never-${i}-${pattern.slice(0, 12)}`}
-                                type="button"
-                                title="Remove"
-                                onClick={() => removeNeverPattern(i)}
-                                className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] text-[#DC2626] transition-colors hover:bg-[#FEE2E2]"
+                                tone="coral"
+                                size="sm"
+                                onRemove={() => removeNeverPattern(i)}
+                                removeLabel={`Remove pattern ${pattern}`}
                               >
-                                {pattern} ×
-                              </button>
+                                {pattern}
+                              </Chip>
                             ))}
                           </div>
                         }
@@ -1557,17 +1546,17 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       <VoiceRow
                         label="Your signature phrases"
                         value={
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {signaturePhrases.map((phrase, i) => (
-                              <button
+                              <Chip
                                 key={`sig-${i}-${phrase.slice(0, 12)}`}
-                                type="button"
-                                title="Click to remove"
-                                onClick={() => removeSignaturePhrase(i)}
-                                className="cursor-pointer rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[11px] text-[#2563EB] transition-colors hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                                tone="blue"
+                                size="sm"
+                                onRemove={() => removeSignaturePhrase(i)}
+                                removeLabel={`Remove phrase ${phrase}`}
                               >
-                                {phrase} ×
-                              </button>
+                                {phrase}
+                              </Chip>
                             ))}
                           </div>
                         }
@@ -1603,15 +1592,17 @@ export default function SettingsClient({ subscription }: { subscription: Setting
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div>
-                      <p className="mb-1.5 text-[12px] font-medium text-[#6B7280]">Add signature phrase</p>
+                      <p className="mb-1.5 text-[12px] font-medium text-ink-2">Add signature phrase</p>
                       <div className="flex gap-2">
-                        <input
+                        <Input
                           value={newSignaturePhrase}
                           onChange={(e) => setNewSignaturePhrase(e.target.value)}
-                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                          className="h-8 text-[12px]"
                         />
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={async () => {
                             const phrase = newSignaturePhrase.trim();
                             if (!phrase) return;
@@ -1620,22 +1611,24 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                             setNewSignaturePhrase("");
                             await patchVoiceOverrides({ signaturePhrases: next });
                           }}
-                          className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
+                          className="shrink-0"
                         >
                           Add
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     <div>
-                      <p className="mb-1.5 text-[12px] font-medium text-[#6B7280]">Add never pattern</p>
+                      <p className="mb-1.5 text-[12px] font-medium text-ink-2">Add never pattern</p>
                       <div className="flex gap-2">
-                        <input
+                        <Input
                           value={newNeverPattern}
                           onChange={(e) => setNewNeverPattern(e.target.value)}
-                          className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[12px]"
+                          className="h-8 text-[12px]"
                         />
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={async () => {
                             const pattern = newNeverPattern.trim();
                             if (!pattern) return;
@@ -1644,19 +1637,21 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                             setNewNeverPattern("");
                             await patchVoiceOverrides({ neverPatterns: next });
                           }}
-                          className="h-8 flex-shrink-0 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#374151] hover:bg-[#F3F4F6]"
+                          className="shrink-0"
                         >
                           Add
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
 
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void handleReanalyze()}
                     disabled={isExtracting || validPostCount < 3}
-                    className="flex items-center gap-1.5 text-[12px] text-[#6B7280] transition-colors hover:text-[#2563EB] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="hover:text-accent-solid"
                   >
                     {isExtracting ? (
                       <>
@@ -1669,28 +1664,27 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                         Re-analyse my posts
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
 
               <div className="flex items-center justify-between py-2">
                 <div>
-                  <p className="text-[13px] font-medium text-[#374151]">Never use emojis</p>
-                  <p className="text-[12px] text-[#9CA3AF]">Override all emoji generation</p>
+                  <p className="text-[13px] font-medium text-ink">Never use emojis</p>
+                  <p className="text-[12px] text-ink-3">Override all emoji generation</p>
                 </div>
-                <input
-                  type="checkbox"
+                <Switch
+                  aria-label="Never use emojis"
                   checked={emojiNeverOverride}
-                  onChange={async (e) => {
-                    const next = e.target.checked;
+                  onCheckedChange={async (next) => {
                     setEmojiNeverOverride(next);
                     await patchVoiceOverrides({ emojiNeverOverride: next });
                   }}
                 />
               </div>
 
-              <div className="border-t border-[#E5E7EB] pt-4">
-                <p className="mb-3 text-[12px] text-[#6B7280]">Content style scanner preferences</p>
+              <div className="border-t border-hairline pt-4">
+                <p className="eyebrow mb-3 text-ink-2">Content style scanner preferences</p>
                 <div className="space-y-3">
                   <div className="flex gap-2">
                     {[
@@ -1698,18 +1692,19 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                       { value: "three_plus", label: "Flag if >3 items" },
                       { value: "never", label: "Never flag" },
                     ].map((opt) => (
-                      <button
+                      <Button
                         key={opt.value}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-pressed={tellFlagNumberedLists === opt.value}
                         onClick={() => setTellFlagNumberedLists(opt.value as "always" | "three_plus" | "never")}
                         className={cn(
-                          "rounded-md border px-3 py-1.5 text-[12px] transition-colors",
-                          tellFlagNumberedLists === opt.value
-                            ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
-                            : "border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6]",
+                          tellFlagNumberedLists === opt.value && "bg-p-blue text-ink hover:bg-p-blue",
                         )}
                       >
                         {opt.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   {[
@@ -1718,22 +1713,13 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                     { key: "tellFlagEngagementBeg", label: "Engagement begs" },
                     { key: "tellFlagEveryLine", label: "Every-line-break format" },
                   ].map((item) => (
-                    <div key={item.key} className="flex items-center justify-between border-b border-[#E5E7EB] py-2 last:border-0">
-                      <p className="text-[13px] text-[#374151]">{item.label}</p>
-                      <button
-                        onClick={() => toggleTellFlag(item.key as keyof typeof tellFlags)}
-                        className={cn(
-                          "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                          tellFlags[item.key as keyof typeof tellFlags] ? "bg-[#2563EB]" : "bg-[#E5E7EB]",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform",
-                            tellFlags[item.key as keyof typeof tellFlags] ? "translate-x-4" : "translate-x-1",
-                          )}
-                        />
-                      </button>
+                    <div key={item.key} className="flex items-center justify-between border-b border-hairline py-2 last:border-0">
+                      <p className="text-[13px] text-ink">{item.label}</p>
+                      <Switch
+                        aria-label={item.label}
+                        checked={tellFlags[item.key as keyof typeof tellFlags]}
+                        onCheckedChange={() => toggleTellFlag(item.key as keyof typeof tellFlags)}
+                      />
                     </div>
                   ))}
                 </div>
@@ -1741,81 +1727,74 @@ export default function SettingsClient({ subscription }: { subscription: Setting
             </div>
 
             <div className="flex justify-end gap-2">
-              <button
-                onClick={saveOverrides}
-                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6]"
-              >
+              <Button variant="outline" onClick={saveOverrides}>
                 Save Voice Overrides
-              </button>
-              <button
-                onClick={handleSaveTellSettings}
-                disabled={savingTellSettings}
-                className="flex h-8 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-4 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F3F4F6] disabled:opacity-50"
-              >
+              </Button>
+              <Button variant="outline" onClick={handleSaveTellSettings} disabled={savingTellSettings}>
                 Save Style Preferences
-              </button>
-              <button
-                onClick={saveVoice}
-                className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#1D4ED8]"
-              >
-                Save Voice Profile
-              </button>
+              </Button>
+              <Button onClick={saveVoice}>Save Voice Profile</Button>
             </div>
           </section>
 
           <section id="topics" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">Topics</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">What you want to post about</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">Topics</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">What you want to post about</p>
             </div>
-            <div className="space-y-4 rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+            <div className="space-y-4 rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
               {topics.map((topic, i) => (
                 <div
                   key={topic.id ?? i}
-                  className="space-y-3 rounded-lg border border-[#E5E7EB] bg-white p-4 transition-colors hover:border-[#D1D5DB]"
+                  className="space-y-3 rounded-[10px] border border-hairline bg-surface p-4 transition-colors hover:border-ink-3"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-[#16A34A]" />
-                      <span className="text-[13.5px] font-medium text-[#111827]">{topic.topicLabel || "Untitled topic"}</span>
+                      <div className="h-1.5 w-1.5 rounded-full bg-[color:var(--status-success)]" />
+                      <span className="text-[13.5px] font-medium text-ink">{topic.topicLabel || "Untitled topic"}</span>
                     </div>
                     {topics.length > 1 ? (
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
                         onClick={() => setTopics((prev) => prev.filter((_, j) => j !== i))}
-                        className="text-[#9CA3AF] transition-colors hover:text-[#DC2626]"
+                        className="hover:text-destructive"
+                        aria-label="Remove topic"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
 
                   <div className="grid grid-cols-1 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Topic label</label>
-                      <input
+                      <label className="eyebrow text-ink-2">Topic label</label>
+                      <Input
                         type="text"
                         value={topic.topicLabel}
                         onChange={(e) => updateTopic(i, "topicLabel", e.target.value)}
-                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[13px]"
+                        className="h-8 text-[13px]"
                       />
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Search query</label>
+                        <label className="eyebrow text-ink-2">Search query</label>
                         {topic.topicLabel.trim() &&
                         (!topic.tavilyQuery.trim() || topic.topicLabel.trim() !== (topic.lastSavedTopicLabel ?? "").trim()) ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="link"
+                            size="xs"
                             onClick={() => suggestTopicQuery(i)}
                             disabled={suggestingTopicIndex === i}
-                            className="flex items-center gap-1 text-[11px] text-[#2563EB] hover:underline disabled:opacity-50"
                           >
                             {suggestingTopicIndex === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                             Suggest
-                          </button>
+                          </Button>
                         ) : null}
                       </div>
-                      <input
+                      <Input
                         type="text"
                         value={topic.tavilyQuery}
                         onChange={(e) => {
@@ -1823,15 +1802,15 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                           updateTopic(i, "querySuggested", false);
                         }}
                         className={cn(
-                          "h-8 w-full rounded-md border px-3 text-[13px]",
-                          topic.querySuggested ? "border-[#FDE68A] bg-[#FFFBEB]" : "border-[#E5E7EB] bg-white",
+                          "h-8 text-[13px]",
+                          topic.querySuggested && "bg-[color:var(--status-warning-bg)]",
                         )}
                       />
-                      {topic.querySuggested ? <p className="text-[11px] text-[#D97706]">AI suggested - edit if needed</p> : null}
+                      {topic.querySuggested ? <p className="text-[11px] font-medium text-ink-2">AI suggested - edit if needed</p> : null}
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[12px] font-medium uppercase tracking-wide text-[#6B7280]">Source URLs</label>
-                      <input
+                      <label className="eyebrow text-ink-2">Source URLs</label>
+                      <Input
                         value={topic.sourceUrls.join(", ")}
                         onChange={(e) =>
                           updateTopic(
@@ -1844,18 +1823,20 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                           )
                         }
                         placeholder="https://example.com/feed, ..."
-                        className="h-8 w-full rounded-md border border-[#E5E7EB] px-3 text-[13px]"
+                        className="h-8 text-[13px]"
                       />
-                      <p className="text-[11px] text-[#9CA3AF]">RSS feeds or blogs, comma separated</p>
+                      <p className="text-[11px] text-ink-3">RSS feeds or blogs, comma separated</p>
                       {AUTO_SUGGEST_SOURCES_ENABLED && topic.id && topic.sourceUrls.length === 0 && !sourceSuggestions[topic.id] ? (
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => triggerSourceSuggestions(i)}
-                          className="mt-1 inline-flex h-7 items-center gap-1 rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[12px] text-[#2563EB] transition-colors hover:bg-[#EFF6FF]"
+                          className="mt-1 text-accent-solid"
                         >
                           <Sparkles className="h-3 w-3" />
                           Suggest sources
-                        </button>
+                        </Button>
                       ) : null}
                       {topic.id && sourceSuggestions[topic.id] ? (
                         <SourceSuggestionsPanel
@@ -1871,8 +1852,8 @@ export default function SettingsClient({ subscription }: { subscription: Setting
 
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[12px] font-medium text-[#6B7280]">Priority</span>
-                      <div className="flex gap-1">
+                      <span className="text-[12px] font-medium text-ink-2">Priority</span>
+                      <div className="flex gap-1.5">
                         {[1, 2, 3, 4, 5].map((weight) => (
                           <button
                             key={weight}
@@ -1884,11 +1865,15 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                               const { response } = await patchTopicById(topicId, { priorityWeight: weight });
                               if (!response.ok) showToast("Failed to update priority", "error");
                             }}
+                            aria-pressed={(topic.priorityWeight ?? 3) === weight}
                             className={cn(
-                              "h-7 w-7 rounded-md border text-[12px] transition-colors",
-                              (topic.priorityWeight ?? 3) === weight
-                                ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
-                                : "border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6]",
+                              chipVariants({
+                                tone: (topic.priorityWeight ?? 3) === weight ? "accent" : "surface",
+                                variant: (topic.priorityWeight ?? 3) === weight ? "solid" : "dashed",
+                                size: "sm",
+                                interactive: true,
+                              }),
+                              "w-7 justify-center px-0",
                             )}
                           >
                             {weight}
@@ -1896,108 +1881,101 @@ export default function SettingsClient({ subscription }: { subscription: Setting
                         ))}
                       </div>
                     </div>
-                    <button
-                      onClick={() => saveTopicRow(i)}
-                      className="h-7 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:bg-[#F3F4F6]"
-                    >
+                    <Button variant="outline" size="sm" onClick={() => saveTopicRow(i)}>
                       Save
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
 
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() =>
                   setTopics((prev) => [
                     ...prev,
                     { topicLabel: "", tavilyQuery: "", sourceUrls: [], priorityWeight: 3, lastSavedTopicLabel: "", querySuggested: false },
                   ])
                 }
-                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#E5E7EB] text-[13px] text-[#9CA3AF] transition-colors hover:border-[#2563EB] hover:text-[#2563EB]"
+                className="w-full gap-2 border-2 border-dashed border-ink text-ink-2"
               >
                 <Plus className="h-4 w-4" />
                 Add topic
-              </button>
+              </Button>
             </div>
             <div className="flex justify-end">
-              <button
-                onClick={saveTopics}
-                className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#1D4ED8]"
-              >
-                Save Topics
-              </button>
+              <Button onClick={saveTopics}>Save Topics</Button>
             </div>
           </section>
 
           <section id="scheduling" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">Scheduling</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">When approved posts are published</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">Scheduling</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">When approved posts are published</p>
             </div>
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+            <div className="rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
               <SchedulingForm initialSettings={schedulingSettings} />
             </div>
           </section>
 
           <section id="linkedin" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">LinkedIn</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">Connection status for publishing</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">LinkedIn</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">Connection status for publishing</p>
             </div>
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+            <div className="rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
               {!linkedinToken ? (
-                <div className="flex items-center justify-between rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-4">
+                <div className="flex items-center justify-between gap-3 rounded-[10px] border-2 border-ink bg-[color:var(--status-error-bg)] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#DC2626]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-destructive">
                       <span className="text-[12px] font-semibold text-white">in</span>
                     </div>
                     <div>
-                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn not connected</p>
-                      <p className="text-[12px] text-[#6B7280]">Connect to enable publishing</p>
+                      <p className="text-[13.5px] font-medium text-ink">LinkedIn not connected</p>
+                      <p className="text-[12px] text-ink-2">Connect to enable publishing</p>
                     </div>
                   </div>
                   <a
                     href="/api/auth/linkedin"
-                    className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium leading-8 text-white transition-colors hover:bg-[#B91C1C]"
+                    className={buttonVariants({ size: "sm" })}
                   >
                     Connect
                   </a>
                 </div>
               ) : linkedinToken.status === "active" ? (
-                <div className="flex items-center justify-between rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] p-4">
+                <div className="flex items-center justify-between gap-3 rounded-[10px] border-2 border-ink bg-[color:var(--status-success-bg)] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0077B5]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-accent-solid">
                       <span className="text-[12px] font-semibold text-white">in</span>
                     </div>
                     <div>
-                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn connected</p>
-                      <p className="text-[12px] text-[#6B7280]">
+                      <p className="text-[13.5px] font-medium text-ink">LinkedIn connected</p>
+                      <p className="text-[12px] text-ink-2">
                         Token expires {formatDistanceToNow(new Date(linkedinToken.tokenExpiry), { addSuffix: true })}
                       </p>
                     </div>
                   </div>
                   <a
                     href="/api/auth/linkedin"
-                    className="h-8 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] leading-8 text-[#374151] transition-colors hover:bg-[#F3F4F6]"
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     Reconnect
                   </a>
                 </div>
               ) : (
-                <div className="flex items-center justify-between rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-4">
+                <div className="flex items-center justify-between gap-3 rounded-[10px] border-2 border-ink bg-[color:var(--status-error-bg)] p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#DC2626]">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-destructive">
                       <span className="text-[12px] font-semibold text-white">in</span>
                     </div>
                     <div>
-                      <p className="text-[13.5px] font-medium text-[#111827]">LinkedIn token expired</p>
-                      <p className="text-[12px] text-[#6B7280]">Reconnect to resume publishing</p>
+                      <p className="text-[13.5px] font-medium text-ink">LinkedIn token expired</p>
+                      <p className="text-[12px] text-ink-2">Reconnect to resume publishing</p>
                     </div>
                   </div>
                   <a
                     href="/api/auth/linkedin"
-                    className="h-8 rounded-md bg-[#DC2626] px-3 text-[12px] font-medium leading-8 text-white transition-colors hover:bg-[#B91C1C]"
+                    className={buttonVariants({ size: "sm" })}
                   >
                     Reconnect now
                   </a>
@@ -2007,24 +1985,24 @@ export default function SettingsClient({ subscription }: { subscription: Setting
           </section>
 
           <section id="billing" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">Billing</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">Subscription and payments</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">Billing</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">Subscription and payments</p>
             </div>
             <BillingCard subscription={subscription} />
           </section>
 
           <section id="account" className="scroll-mt-6 space-y-4">
-            <div className="border-b border-[#E5E7EB] pb-3">
-              <h2 className="text-[16px] font-semibold text-[#111827]">Account</h2>
-              <p className="mt-0.5 text-[13px] text-[#6B7280]">Manage your data and account</p>
+            <div className="border-b-2 border-ink pb-3">
+              <h2 className="font-display text-[18px] font-bold text-ink">Account</h2>
+              <p className="mt-0.5 text-[13px] text-ink-2">Manage your data and account</p>
             </div>
 
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+            <div className="rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-[14px] font-medium text-[#111827]">Export your data</h3>
-                  <p className="mt-0.5 text-[13px] text-[#6B7280]">
+                  <h3 className="font-display text-[15px] font-bold text-ink">Export your data</h3>
+                  <p className="mt-0.5 text-[13px] text-ink-2">
                     Download all your drafts, posts, voice profile, topics, and activity as a JSON file.
                   </p>
                 </div>
@@ -2032,9 +2010,9 @@ export default function SettingsClient({ subscription }: { subscription: Setting
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#FECACA] bg-white p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
-              <h3 className="mb-1 text-[14px] font-medium text-[#DC2626]">Danger zone</h3>
-              <p className="mb-4 text-[13px] text-[#6B7280]">
+            <div className="rounded-[10px] border-2 border-ink bg-surface p-6 shadow-card">
+              <h3 className="mb-1 font-display text-[15px] font-bold text-destructive">Danger zone</h3>
+              <p className="mb-4 text-[13px] text-ink-2">
                 Permanently delete your account and all associated data. This cannot be undone.
               </p>
               <DeleteAccountButton />

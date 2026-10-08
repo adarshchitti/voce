@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
+import { Button } from "@/components/ui/button";
+import { chipVariants } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 const DAYS = [
   { value: "monday", label: "Mon" },
@@ -107,7 +111,7 @@ export function SchedulingForm({ initialSettings }: SchedulingFormProps) {
   return (
     <div className="space-y-5">
       <div>
-        <label className="mb-1.5 block text-[13px] font-medium text-[#374151]">Cadence</label>
+        <label className="eyebrow mb-2 block text-ink-2">Cadence</label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {[
             { value: "daily", label: "Daily", desc: "3 drafts each morning" },
@@ -118,14 +122,13 @@ export function SchedulingForm({ initialSettings }: SchedulingFormProps) {
               key={option.value}
               type="button"
               onClick={() => setCadenceMode(option.value)}
-              className={`rounded-md border px-3 py-2 text-left transition-colors ${
-                cadenceMode === option.value
-                  ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
-                  : "border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827]"
-              }`}
+              className={cn(
+                "rounded-[10px] border-2 border-ink px-3 py-2 text-left text-ink transition-colors",
+                cadenceMode === option.value ? "bg-p-blue shadow-xs" : "bg-surface hover:bg-paper-sunk"
+              )}
             >
               <div className="text-[13px] font-medium">{option.label}</div>
-              <div className={`mt-0.5 text-[11px] ${cadenceMode === option.value ? "text-[#2563EB]" : "text-[#9CA3AF]"}`}>
+              <div className={cn("mt-0.5 text-[11px]", cadenceMode === option.value ? "text-ink-2" : "text-ink-3")}>
                 {option.desc}
               </div>
             </button>
@@ -134,42 +137,41 @@ export function SchedulingForm({ initialSettings }: SchedulingFormProps) {
       </div>
 
       <div>
-        <label className="mb-1.5 block text-[13px] font-medium text-[#374151]">Posting days</label>
+        <label className="eyebrow mb-2 block text-ink-2">Posting days</label>
         <div className="flex flex-wrap gap-2">
           {DAYS.map((day) => (
             <button
               key={day.value}
               type="button"
               onClick={() => toggleDay(day.value)}
-              className={`h-8 rounded-full border px-3 text-[12px] font-medium transition-colors ${
-                preferredDays.includes(day.value)
-                  ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
-                  : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#2563EB]"
-              }`}
+              className={chipVariants({
+                tone: preferredDays.includes(day.value) ? "blue" : "surface",
+                size: "lg",
+                interactive: true,
+              })}
             >
               {day.label}
             </button>
           ))}
         </div>
-        {preferredDays.length === 0 ? <p className="mt-1 text-[11px] text-[#DC2626]">Select at least one day</p> : null}
+        {preferredDays.length === 0 ? <p className="mt-1.5 text-[12px] font-medium text-destructive">Select at least one day</p> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-[#374151]">Preferred time</label>
-          <input
+        <div className="space-y-2">
+          <label className="eyebrow block text-ink-2">Preferred time</label>
+          <Input
             type="time"
             value={preferredTime}
             onChange={(e) => setPreferredTime(normalizeTime(e.target.value))}
-            className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
           />
         </div>
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-[#374151]">Timezone</label>
+        <div className="space-y-2">
+          <label className="eyebrow block text-ink-2">Timezone</label>
           <select
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
-            className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+            className="h-9 w-full rounded-[10px] border-2 border-ink bg-surface px-3 py-2 text-[14px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent-solid"
           >
             {TIMEZONES.map((tz) => (
               <option key={tz.value} value={tz.value}>
@@ -181,62 +183,57 @@ export function SchedulingForm({ initialSettings }: SchedulingFormProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-[#374151]">Drafts per day</label>
-          <input
+        <div className="space-y-2">
+          <label className="eyebrow block text-ink-2">Drafts per day</label>
+          <Input
             type="number"
             min={1}
             max={5}
             value={draftsPerDay}
             onChange={(e) => setDraftsPerDay(Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
-            className="h-9 w-24 rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-[13.5px] text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+            className="w-24"
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label className="block text-[13px] font-medium text-[#374151]">Posting jitter</label>
+        <div className="space-y-2">
+          <label className="eyebrow block text-ink-2">Posting jitter</label>
           <div className="flex flex-wrap gap-2">
-          {[0, 5, 10, 15, 20, 30].map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setJitterMinutes(n)}
-              className={`h-8 rounded-full border px-3 text-[12px] font-medium transition-colors ${
-                jitterMinutes === n
-                  ? "border-[#BFDBFE] bg-[#EFF6FF] text-[#2563EB]"
-                  : "border-[#E5E7EB] bg-white text-[#6B7280] hover:border-[#2563EB]"
-              }`}
-            >
-              {n === 0 ? "None" : `±${n}m`}
-            </button>
-          ))}
+            {[0, 5, 10, 15, 20, 30].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setJitterMinutes(n)}
+                className={chipVariants({
+                  tone: jitterMinutes === n ? "blue" : "surface",
+                  size: "lg",
+                  interactive: true,
+                })}
+              >
+                {n === 0 ? "None" : `±${n}m`}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      <div className="rounded-md border border-[#E5E7EB] bg-[#F9FAFB] p-3">
-        <p className="text-[12px] text-[#6B7280]">
+      <div className="rounded-[10px] border-2 border-ink bg-paper-sunk p-3">
+        <p className="text-[12.5px] leading-relaxed text-ink-2">
           Posts will be scheduled on{" "}
-          <span className="font-medium text-[#111827]">
+          <span className="font-medium text-ink">
             {preferredDays.length > 0
               ? preferredDays.map((d) => d.charAt(0).toUpperCase() + d.slice(1)).join(", ")
               : "no days selected"}
           </span>{" "}
-          at <span className="font-medium text-[#111827]">{normalizeTime(preferredTime)}</span>{" "}
-          <span className="font-medium text-[#111827]">{TIMEZONES.find((t) => t.value === timezone)?.label ?? timezone}</span>
-          {jitterMinutes > 0 ? <span className="text-[#9CA3AF]"> (±{jitterMinutes} min variation)</span> : null}
+          at <span className="font-medium text-ink">{normalizeTime(preferredTime)}</span>{" "}
+          <span className="font-medium text-ink">{TIMEZONES.find((t) => t.value === timezone)?.label ?? timezone}</span>
+          {jitterMinutes > 0 ? <span className="text-ink-3"> (±{jitterMinutes} min variation)</span> : null}
         </p>
       </div>
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving || preferredDays.length === 0}
-          className="flex h-8 items-center gap-1.5 rounded-md bg-[#2563EB] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSave} disabled={saving || preferredDays.length === 0}>
           {saving ? "Saving..." : "Save Scheduling"}
-        </button>
+        </Button>
       </div>
     </div>
   );

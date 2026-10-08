@@ -39,13 +39,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg ${
-              toast.type === 'success' ? 'bg-slate-900' : 'bg-red-600'
+            className={`press-card pointer-events-auto rounded-[10px] border-2 border-ink px-4 py-3 text-[13px] font-medium text-ink ${
+              toast.type === 'success' ? 'bg-p-sage' : 'bg-p-coral'
             }`}
           >
             <div>{toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}</div>
             {toast.actionHref && toast.actionLabel ? (
-              <a href={toast.actionHref} className="mt-1 inline-block text-xs underline">
+              <a href={toast.actionHref} className="link-rule mt-1 inline-block text-[12px]">
                 {toast.actionLabel}
               </a>
             ) : null}

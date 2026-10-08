@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import { useToast } from "./Toast";
+import { Button } from "@/components/ui/button";
+import { chipVariants } from "@/components/ui/chip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const groupedReasons = [
   {
@@ -64,61 +75,76 @@ export default function RejectionModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl">
-        <div className="border-b border-slate-100 p-5">
-          <h3 className="font-semibold text-slate-900">Why reject this draft?</h3>
-          <p className="mt-0.5 text-sm text-slate-500">Your feedback improves future drafts</p>
-        </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !loading) onClose();
+      }}
+    >
+      <DialogContent showCloseButton={false} className="max-h-[calc(100dvh-2rem)] gap-5 overflow-y-auto p-5">
+        <DialogHeader>
+          <DialogTitle className="text-[17px] leading-tight font-semibold">Why reject this draft?</DialogTitle>
+          <DialogDescription className="text-ink-2">Your feedback improves future drafts</DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-2 p-5">
+        <div className="space-y-4">
           {groupedReasons.map((group) => (
             <div key={group.title} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.title}</p>
-              {group.options.map((option) => (
-                <label key={option.code} className="group flex cursor-pointer items-center gap-3">
-                  <input
-                    type="radio"
-                    name="reason"
-                    value={option.code}
-                    checked={reasonCode === option.code}
-                    onChange={() => setReasonCode(option.code)}
-                    className="accent-blue-600"
-                    disabled={loading}
-                  />
-                  <span className="text-sm text-slate-700 group-hover:text-slate-900">{option.label}</span>
-                </label>
-              ))}
+              <p className="eyebrow text-ink-3">{group.title}</p>
+              <div className="flex flex-wrap gap-2">
+                {group.options.map((option) => (
+                  <label
+                    key={option.code}
+                    className={cn(
+                      chipVariants({
+                        tone: reasonCode === option.code ? "coral" : "surface",
+                        size: "lg",
+                        interactive: !loading,
+                      }),
+                      "has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent-solid",
+                      loading && "cursor-not-allowed opacity-50"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="reason"
+                      value={option.code}
+                      checked={reasonCode === option.code}
+                      onChange={() => setReasonCode(option.code)}
+                      className="sr-only"
+                      disabled={loading}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
             </div>
           ))}
 
-          <textarea
+          <Textarea
             value={freeText}
             onChange={(e) => setFreeText(e.target.value)}
             placeholder="Add detail (optional)"
             rows={2}
-            className="mt-3 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="resize-none text-[13.5px]"
             disabled={loading}
           />
         </div>
 
-        <div className="flex gap-2 p-5 pt-0">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1">
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="destructive"
             onClick={submit}
             disabled={!reasonCode || loading}
-            className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1"
           >
             {loading ? "Saving..." : "Reject draft"}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

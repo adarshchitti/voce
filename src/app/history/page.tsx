@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { CheckCircle, ChevronRight, Clock, ExternalLink, FileText, Inbox, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { combineDateAndTime } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/components/Toast";
@@ -32,29 +36,29 @@ type FilterKey = "all" | "scheduled" | "published" | "failed";
 function StatusIcon({ status }: { status: string }) {
   if (status === "published") {
     return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F0FDF4]">
-        <CheckCircle className="h-3.5 w-3.5 text-[#16A34A]" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-p-sage">
+        <CheckCircle className="h-3.5 w-3.5 text-ink" />
       </div>
     );
   }
   if (status === "scheduled") {
     return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EFF6FF]">
-        <Clock className="h-3.5 w-3.5 text-[#2563EB]" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-p-blue">
+        <Clock className="h-3.5 w-3.5 text-ink" />
       </div>
     );
   }
   if (status === "publishing") {
     return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EFF6FF]">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2563EB]" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-p-blue">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-ink" />
       </div>
     );
   }
   if (status === "failed") {
     return (
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FEF2F2]">
-        <XCircle className="h-3.5 w-3.5 text-[#DC2626]" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-p-coral">
+        <XCircle className="h-3.5 w-3.5 text-ink" />
       </div>
     );
   }
@@ -81,11 +85,7 @@ function RetryButton({ postId }: { postId: string }) {
   };
 
   return (
-    <button
-      onClick={handleRetry}
-      disabled={retrying}
-      className="inline-flex h-7 items-center gap-1.5 rounded-md bg-[#DC2626] px-3 text-[12px] text-white transition-colors hover:bg-[#B91C1C] disabled:opacity-50"
-    >
+    <Button variant="outline" size="sm" onClick={handleRetry} disabled={retrying}>
       {retrying ? (
         <>
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -97,7 +97,7 @@ function RetryButton({ postId }: { postId: string }) {
           Retry
         </>
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -135,11 +135,7 @@ function MoveToInboxButton({
   }
 
   return (
-    <button
-      onClick={handleMove}
-      disabled={loading}
-      className="inline-flex items-center gap-1.5 h-7 px-3 text-[12px] rounded-md border border-[#E5E7EB] bg-white text-[#374151] hover:bg-[#EFF6FF] hover:text-[#2563EB] hover:border-[#BFDBFE] disabled:opacity-50 transition-colors"
-    >
+    <Button variant="outline" size="sm" onClick={handleMove} disabled={loading}>
       {loading ? (
         <>
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -151,7 +147,7 @@ function MoveToInboxButton({
           Move to inbox
         </>
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -193,48 +189,41 @@ function RescheduleButton({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#E5E7EB] bg-white px-3 text-[12px] text-[#374151] transition-colors hover:border-[#BFDBFE] hover:bg-[#EFF6FF] hover:text-[#2563EB]">
+        <Button variant="outline" size="sm">
           <Clock className="h-3 w-3" />
           Reschedule
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 space-y-3 p-4">
-        <p className="text-[13px] font-medium text-[#111827]">Reschedule post</p>
+        <p className="text-[13px] font-medium text-ink">Reschedule post</p>
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <label className="text-[11px] text-[#6B7280]">Date</label>
-            <input
+            <label className="eyebrow text-ink-3">Date</label>
+            <Input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px]"
+              className="h-8 px-2 text-[12px]"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] text-[#6B7280]">Time (UTC)</label>
-            <input
+            <label className="eyebrow text-ink-3">Time (UTC)</label>
+            <Input
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              className="h-8 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px]"
+              className="h-8 px-2 text-[12px]"
             />
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => setOpen(false)}
-            className="h-8 flex-1 rounded-md border border-[#E5E7EB] text-[12px] text-[#6B7280] transition-colors hover:bg-[#F9FAFB]"
-          >
+          <Button variant="ghost" size="sm" className="flex-1" onClick={() => setOpen(false)}>
             Cancel
-          </button>
-          <button
-            onClick={handleReschedule}
-            disabled={saving}
-            className="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#2563EB] text-[12px] font-medium text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-50"
-          >
+          </Button>
+          <Button size="sm" className="flex-1" onClick={handleReschedule} disabled={saving}>
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             {saving ? "Saving..." : "Confirm"}
-          </button>
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -271,64 +260,60 @@ function ManualMetrics({ post }: { post: Post }) {
   return (
     <div className="mt-1">
       {hasMetrics && !open ? (
-        <div className="flex items-center gap-3 text-[11px] text-[#6B7280]">
+        <div className="flex items-center gap-3 text-[11px] text-ink-2">
           {post.manualImpressions ? <span>Impressions: {post.manualImpressions.toLocaleString()}</span> : null}
           {post.manualReactions ? <span>Reactions: {post.manualReactions}</span> : null}
           {post.manualComments ? <span>Comments: {post.manualComments}</span> : null}
-          <button onClick={() => setOpen(true)} className="ml-auto text-[#2563EB] hover:underline">
+          <button onClick={() => setOpen(true)} className="ml-auto text-accent-solid hover:underline">
             Edit
           </button>
         </div>
       ) : null}
 
       {!hasMetrics && !open ? (
-        <button onClick={() => setOpen(true)} className="text-[11px] text-[#9CA3AF] transition-colors hover:text-[#6B7280]">
+        <button onClick={() => setOpen(true)} className="text-[11px] text-ink-3 transition-colors hover:text-ink">
           + Add manual metrics
         </button>
       ) : null}
 
       {open ? (
-        <div className="space-y-2 rounded-md border border-[#E5E7EB] bg-white p-2.5">
+        <div className="space-y-2 rounded-[10px] border-2 border-ink bg-surface p-2.5">
           <div className="flex gap-2">
             <div className="min-w-[110px] flex-1">
-              <input
+              <Input
                 type="number"
                 value={impressions}
                 onChange={(e) => setImpressions(e.target.value)}
                 placeholder="0"
-                className="h-7 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                className="h-7 px-2 text-[12px]"
               />
             </div>
             <div className="min-w-[90px] flex-1">
-              <input
+              <Input
                 type="number"
                 value={reactions}
                 onChange={(e) => setReactions(e.target.value)}
                 placeholder="0"
-                className="h-7 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                className="h-7 px-2 text-[12px]"
               />
             </div>
             <div className="min-w-[90px] flex-1">
-              <input
+              <Input
                 type="number"
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
                 placeholder="0"
-                className="h-7 w-full rounded-md border border-[#E5E7EB] px-2 text-[12px] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                className="h-7 px-2 text-[12px]"
               />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-0.5">
-            <button onClick={() => setOpen(false)} className="px-2 py-1 text-[11px] text-[#6B7280] hover:text-[#374151]">
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="h-7 rounded-md border border-[#E5E7EB] bg-white px-2.5 text-[11px] font-medium text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleSave} disabled={saving}>
               {saving ? "Saving..." : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -346,9 +331,9 @@ function EmptyState({ filter }: { filter: FilterKey }) {
   const { icon: Icon, title, desc } = messages[filter] ?? messages.all;
   return (
     <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
-      <Icon className="mb-3 h-8 w-8 text-[#D1D5DB]" />
-      <p className="text-[13.5px] font-medium text-[#374151]">{title}</p>
-      <p className="mt-0.5 max-w-xs text-[12px] text-[#9CA3AF]">{desc}</p>
+      <Icon className="mb-3 h-8 w-8 text-ink-3" />
+      <p className="text-[13.5px] font-medium text-ink">{title}</p>
+      <p className="mt-0.5 max-w-xs text-[12px] text-ink-2">{desc}</p>
     </div>
   );
 }
@@ -365,60 +350,55 @@ function PostRow({
   const [expanded, setExpanded] = useState(false);
   const firstLine = post.contentSnapshot.split("\n")[0] ?? "";
   return (
-    <div className={cn("transition-colors hover:bg-[#FAFAFA]", !isLast && "border-b border-[#F3F4F6]")}>
+    <div className={cn("transition-colors hover:bg-paper-sunk", !isLast && "border-b border-hairline")}>
       <div className="flex cursor-pointer items-center gap-3 px-4 py-3" onClick={() => setExpanded((prev) => !prev)}>
         <StatusIcon status={post.status} />
         <div className="w-20 shrink-0">
-          <p className="text-[12px] font-medium text-[#374151]">{format(new Date(post.scheduledAt), "MMM d")}</p>
-          <p className="hidden text-[11px] text-[#9CA3AF] sm:block">{format(new Date(post.scheduledAt), "h:mm a")}</p>
+          <p className="text-[12px] font-medium text-ink">{format(new Date(post.scheduledAt), "MMM d")}</p>
+          <p className="hidden text-[11px] text-ink-3 sm:block">{format(new Date(post.scheduledAt), "h:mm a")}</p>
         </div>
-        <p className="min-w-0 flex-1 truncate text-[13px] text-[#374151]">{firstLine}</p>
+        <p className="min-w-0 flex-1 truncate text-[13px] text-ink">{firstLine}</p>
         {post.seriesId ? (
-          <span className="hidden shrink-0 rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[11px] text-[#6B7280] md:block">
-            {post.seriesTitle?.slice(0, 20) ?? "Project"}
-            {post.seriesPosition ? ` · #${post.seriesPosition}` : ""}
-          </span>
+          <Chip tone="neutral" size="sm" className="hidden md:inline-flex">
+            {`${post.seriesTitle?.slice(0, 20) ?? "Project"}${post.seriesPosition ? ` · #${post.seriesPosition}` : ""}`}
+          </Chip>
         ) : null}
         {post.voiceScore ? (
-          <span
-            className={cn(
-              "hidden shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium sm:block",
-              post.voiceScore >= 8 && "bg-[#F0FDF4] text-[#16A34A]",
-              post.voiceScore >= 5 && post.voiceScore < 8 && "bg-[#FFFBEB] text-[#D97706]",
-              post.voiceScore < 5 && "bg-[#FEF2F2] text-[#DC2626]",
-            )}
+          <Badge
+            variant={post.voiceScore >= 8 ? "success" : post.voiceScore >= 5 ? "warning" : "flagged"}
+            className="hidden shrink-0 sm:inline-flex"
           >
             {post.voiceScore}
-          </span>
+          </Badge>
         ) : null}
-        <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-[#9CA3AF] transition-transform", expanded && "rotate-90")} />
+        <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-ink-3 transition-transform", expanded && "rotate-90")} />
       </div>
       {expanded ? (
-        <div className="border-t border-[#F3F4F6] bg-[#FAFAFA] px-4 pb-4 pt-0">
+        <div className="border-t border-hairline bg-paper-sunk px-4 pb-4 pt-0">
           {post.status === "failed" && post.failureReason ? (
-            <div className="mb-3 mt-3 rounded-md border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12.5px] text-[#DC2626]">
+            <div className="mb-3 mt-3 rounded-[10px] border-2 border-ink bg-p-coral p-3 text-[12.5px] text-ink">
               <span className="font-medium">Failed: </span>
               {post.failureReason}
             </div>
           ) : null}
           {post.status === "scheduled" ? (
-            <p className="text-[11px] text-[#6B7280] mb-2 mt-3">
+            <p className="mb-2 mt-3 text-[11px] text-ink-2">
               This post is scheduled. Moving it back to your inbox will cancel the scheduled publish.
             </p>
           ) : null}
           {post.status === "publishing" ? (
-            <p className="text-[11px] text-[#D97706] mb-2 mt-3">
+            <p className="mb-2 mt-3 text-[11px] font-medium text-ink">
               This post is currently being published. Moving it back may not prevent it from posting.
             </p>
           ) : null}
-          <p className="mb-3 whitespace-pre-wrap text-[13px] leading-relaxed text-[#374151]">{post.contentSnapshot}</p>
+          <p className="mb-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">{post.contentSnapshot}</p>
           <div className="flex flex-wrap items-center gap-2">
             {post.status === "published" && post.linkedinPostId ? (
               <a
                 href={`https://www.linkedin.com/feed/update/${post.linkedinPostId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#E5E7EB] px-3 text-[12px] text-[#0077B5] transition-colors hover:bg-[#EFF6FF]"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
               >
                 <ExternalLink className="h-3 w-3" />
                 View on LinkedIn
@@ -482,7 +462,7 @@ export default function HistoryPage() {
   return (
     <div className="overflow-x-hidden">
       <PageHeader title="History" description="All scheduled and published posts" />
-      <div className="mb-5 flex gap-1 border-b border-[#E5E7EB] pb-0">
+      <div className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-[10px] bg-paper-sunk p-1">
         {[
           { key: "all", label: "All" },
           { key: "scheduled", label: "Scheduled" },
@@ -493,26 +473,21 @@ export default function HistoryPage() {
             key={tab.key}
             onClick={() => setFilter(tab.key as FilterKey)}
             className={cn(
-              "border-b-2 -mb-px px-3 py-2 text-[13px] font-medium transition-colors",
-              filter === tab.key ? "border-[#2563EB] text-[#2563EB]" : "border-transparent text-[#6B7280] hover:text-[#374151]",
+              "inline-flex h-8 items-center rounded-md border-2 px-3 text-[13px] font-medium transition-colors",
+              filter === tab.key ? "border-ink bg-p-blue text-ink shadow-xs" : "border-transparent text-ink-2 hover:text-ink",
             )}
           >
             {tab.label}
             {counts[tab.key as FilterKey] > 0 ? (
-              <span
-                className={cn(
-                  "ml-1.5 rounded-full px-1.5 py-0.5 text-[11px]",
-                  tab.key === "failed" ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#F3F4F6] text-[#6B7280]",
-                )}
-              >
+              <Chip tone={tab.key === "failed" ? "coral" : "neutral"} size="sm" className="ml-1.5">
                 {counts[tab.key as FilterKey]}
-              </span>
+              </Chip>
             ) : null}
           </button>
         ))}
       </div>
 
-      <div className="w-full rounded-lg border border-[#E5E7EB] bg-white shadow-[0_1px_3px_0_rgb(0_0_0/0.07)]">
+      <div className="w-full overflow-hidden rounded-[10px] border-2 border-ink bg-surface">
         {filteredPosts.length === 0 ? (
           <EmptyState filter={filter} />
         ) : (
